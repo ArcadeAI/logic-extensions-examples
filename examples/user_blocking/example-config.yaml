@@ -1,0 +1,13 @@
+# User Blocking Configuration
+#
+# List of users who should be blocked from accessing and executing tools.
+
+blocked_users:
+  - user_id: "suspended-user"
+    reason: "Account suspended for policy violation"
+
+  - user_id: "former-employee"
+    reason: "No longer with organization"
+
+  - user_id: "test-bot"
+    reason: "Automated bot account - not authorized for tool access"

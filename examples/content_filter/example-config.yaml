@@ -1,0 +1,37 @@
+# Content Filter Configuration
+#
+# Demonstrates keyword and pattern-based content filtering.
+
+# Simple keyword blocking (case-insensitive, checked in both inputs and outputs)
+blocked_keywords:
+  - "confidential"
+  - "internal-only"
+  - "top-secret"
+
+# Block entire toolkits from being visible
+blocked_toolkits:
+  - "DangerousToolkit"
+
+# Regex patterns for blocking tool inputs before execution
+blocked_input_patterns:
+  - name: "sql-injection"
+    pattern: "(?i)(DROP|DELETE|TRUNCATE)\\s+TABLE"
+    action: block
+    message: "Potentially dangerous SQL detected in input"
+
+  - name: "blocked-domain"
+    pattern: "@blocked\\.com"
+    action: block
+    message: "References to blocked.com are not allowed"
+
+# Regex patterns for filtering tool outputs after execution
+blocked_output_patterns:
+  - name: "internal-urls"
+    pattern: "https?://internal\\.[\\w.]+"
+    action: replace
+    replacement: "[INTERNAL URL REMOVED]"
+
+  - name: "api-keys"
+    pattern: "(?i)(api[_-]?key|token)[\"']?\\s*[:=]\\s*[\"']?[\\w-]{20,}"
+    action: block
+    message: "Output contains what appears to be an API key or token"
