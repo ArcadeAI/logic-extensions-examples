@@ -1,0 +1,178 @@
+# Advanced Hook Server Configuration
+#
+# This file demonstrates all available configuration options.
+# The server hot-reloads this file when it changes.
+#
+# Usage: go run ./examples/advanced_server -config example-config.yaml
+
+# Health endpoint configuration
+health:
+  status: healthy # Options: healthy, degraded, unhealthy
+
+# Access control hook configuration
+# Determines which tools a user can see/use
+access:
+  default_action: allow # "allow" or "deny" when no rule matches
+
+  rules:
+    # Block a specific user from all tools
+    - user_id: "blocked-user"
+      action: deny
+      reason: "Account suspended"
+
+    # Block a specific toolkit
+    - toolkit: "DangerousToolkit"
+      action: deny
+      reason: "Toolkit disabled by admin"
+
+    # Block a specific tool
+    - toolkit: "Email"
+      tool: "SendBulk"
+      action: deny
+      reason: "Bulk email is disabled"
+
+    # Allow admin users access to admin tools
+    - user_id: "~^admin-.*"   # Regex: users starting with "admin-"
+      toolkit: "Admin*"        # Glob: toolkits starting with "Admin"
+      action: allow
+
+    # Deny test users from production tools
+    - user_id: "~^test-.*"
+      toolkit: "Production*"
+      action: deny
+      reason: "Test users cannot access production tools"
+
+# Pre-execution hook configuration
+# Runs before a tool is executed - can block or modify the request
+pre:
+  default_action: proceed # "proceed", "block", or "rate_limit"
+
+  rules:
+    # Block emails to certain domains
+    - toolkit: "Email"
+      tool: "SendEmail"
+      input_match: "to contains @blocked.com"
+      action: block
+      error_message: "Sending to blocked.com is not allowed"
+
+    # Rate limit search requests
+    - toolkit: "Search"
+      tool: "WebSearch"
+      action: rate_limit
+      error_message: "Too many search requests"
+
+    # Modify inputs before execution
+    - toolkit: "FileSystem"
+      tool: "WriteFile"
+      action: proceed
+      override:
+        inputs:
+          base_path: "/sandbox/"
+        headers:
+          X-Sandbox-Mode: "true"
+
+    # Inject secrets for database tools
+    - toolkit: "Database"
+      tool: "*"
+      action: proceed
+      override:
+        secrets:
+          DB_PASSWORD: "secure-password-123"
+          DB_HOST: "db.internal:5432"
+
+    # Override server routing for test users
+    - user_id: "test-user"
+      action: proceed
+      override:
+        server:
+          name: "test-worker"
+          uri: "http://localhost:9999"
+          type: "arcade"
+
+# Post-execution hook configuration
+# Runs after tool execution - can block or modify the response
+post:
+  default_action: proceed
+
+  rules:
+    # Block failed executions
+    - success: false
+      action: block
+      error_message: "Tool execution failed - response blocked"
+
+    # Redact sensitive data from database queries
+    - toolkit: "Database"
+      tool: "Query"
+      action: proceed
+      override:
+        output:
+          data: "[REDACTED]"
+          row_count: 0
+
+# PII Redaction configuration
+# Automatically detects and handles PII in tool responses
+pii:
+  enabled: true
+  action: redact # "redact" replaces PII with placeholders; "block" rejects the response
+
+  # Which PII types to detect
+  types:
+    email: true           # email@example.com
+    ipv4: true            # 192.168.1.1
+    ssn: true             # 123-45-6789
+    phone: true           # (555) 123-4567
+    credit_card: true     # 4111-1111-1111-1111
+    date_of_birth: false  # 01/15/1990
+
+  # Custom PII patterns (regex)
+  custom:
+    - name: "employee_id"
+      pattern: "EMP-\\d{6}"
+      replacement: "[EMPLOYEE ID REDACTED]"
+
+# A/B and Canary Testing configuration
+ab_testing:
+  enabled: true
+
+  # External tool registry for discovering available tools and versions
+  tool_registry:
+    base_url: ""     # e.g., https://api.example.com
+    api_key: ""      # API key for authentication
+
+  # Experiment definitions
+  experiments:
+    # Example: canary test for a new search tool version
+    - name: "search-v2-canary"
+      enabled: true
+      toolkit: "Search"
+      tool: "WebSearch"
+      mode: canary   # "ab" for A/B test, "canary" for gradual rollout
+      variants:
+        - name: "stable"
+          weight: 90
+          version: "1.0.0"
+        - name: "canary"
+          weight: 10
+          version: "2.0.0"
+          server:
+            name: "search-v2"
+            uri: "http://search-v2.internal:8080"
+            type: "arcade"
+
+    # Example: A/B test comparing two email tool implementations
+    - name: "email-provider-test"
+      enabled: false
+      toolkit: "Email"
+      tool: "SendEmail"
+      mode: ab
+      variants:
+        - name: "provider-a"
+          weight: 50
+          version: "1.0.0"
+        - name: "provider-b"
+          weight: 50
+          version: "1.0.0"
+          server:
+            name: "email-alt"
+            uri: "http://email-alt.internal:8080"
+            type: "arcade"
