@@ -1,0 +1,121 @@
+# =============================================================================
+# CATE Hook Server - Full Configuration
+# =============================================================================
+# This file configures all features of the hook server.
+# The server hot-reloads this file when it changes.
+
+# Health endpoint
+health:
+  status: healthy  # healthy, degraded, unhealthy
+
+# =============================================================================
+# Access Control
+# =============================================================================
+# Determines which tools a user can see/use.
+# Rules are evaluated in order - first match wins.
+access:
+  default_action: allow  # allow or deny
+  rules:
+    # Block a specific user from all tools
+    - user_id: "blocked-user"
+      action: deny
+      reason: "User is suspended"
+
+    # Block a specific toolkit
+    - toolkit: "DangerousToolkit"
+      action: deny
+      reason: "Toolkit is disabled"
+
+    # Allow admin users to access admin tools (glob pattern)
+    - user_id: "~^admin-.*"
+      toolkit: "Admin*"
+      action: allow
+
+# =============================================================================
+# Pre-Execution Rules
+# =============================================================================
+# Runs before a tool is executed - can block or modify the request.
+pre:
+  default_action: proceed  # proceed, block, or rate_limit
+  rules:
+    # Block based on input content
+    - toolkit: "Email"
+      tool: "sendEmail"
+      input_match: "to contains @blocked.com"
+      action: block
+      error_message: "Sending to blocked domains is not allowed"
+
+    # Rate limit a specific tool
+    - toolkit: "Search"
+      tool: "webSearch"
+      action: rate_limit
+      error_message: "Too many search requests"
+
+# =============================================================================
+# Post-Execution Rules
+# =============================================================================
+# Runs after tool execution - can block or modify the response.
+post:
+  default_action: proceed
+  rules:
+    # Block if execution failed
+    - success: false
+      action: block
+      error_message: "Tool execution failed"
+
+# =============================================================================
+# PII Redaction
+# =============================================================================
+# Detects and redacts personally identifiable information from tool outputs.
+pii:
+  enabled: false
+  mode: redact  # redact (replace PII) or block (reject response)
+  types:
+    email: true
+    ip_address: true
+    ssn: true
+    phone_number: true
+    credit_card: true
+    date_of_birth: true
+  custom_patterns: []
+    # - name: "employee_id"
+    #   pattern: "EMP-\\d{6}"
+    #   replacement: "[EMP-REDACTED]"
+
+# =============================================================================
+# A/B Testing
+# =============================================================================
+# Routes tool executions to different variants for testing.
+ab_testing:
+  enabled: false
+  experiments: []
+    # - name: "search-v2-rollout"
+    #   toolkit: "Search"
+    #   tool: "WebSearch"
+    #   enabled: true
+    #   variants:
+    #     - name: "control"
+    #       weight: 80
+    #       server:
+    #         name: "search-v1"
+    #         uri: "http://search-v1:8080"
+    #         type: "arcade"
+    #     - name: "treatment"
+    #       weight: 20
+    #       server:
+    #         name: "search-v2"
+    #         uri: "http://search-v2:8080"
+    #         type: "arcade"
+    #   user_targeting:
+    #     include: ["beta-*"]
+    #     exclude: []
+
+# =============================================================================
+# Tool Catalog Integration
+# =============================================================================
+# Fetches tools from an external API for use in A/B tests.
+arcade:
+  enabled: false
+  api_url: "https://api.arcade.dev"
+  api_key: ""
+  fetch_interval_seconds: 300
