@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hook Server Dashboard</title>
+<style>
+:root {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #eef2ff;
+  --bg: #f8fafc;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #94a3b8;
+  --sidebar-active: #e2e8f0;
+  --card-bg: #ffffff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar { width: 240px; background: var(--sidebar-bg); color: var(--sidebar-text); padding: 0; display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; left: 0; z-index: 10; }
+.sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.sidebar-header h1 { font-size: 18px; color: #fff; font-weight: 700; }
+.sidebar-header p { font-size: 12px; color: var(--sidebar-text); margin-top: 4px; }
+.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+.nav-section { padding: 8px 20px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; font-weight: 600; }
+.nav-item { display: flex; align-items: center; padding: 10px 20px; cursor: pointer; transition: all 0.15s; font-size: 14px; border-left: 3px solid transparent; }
+.nav-item:hover { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+.nav-item.active { background: rgba(255,255,255,0.1); color: var(--sidebar-active); border-left-color: var(--primary); }
+.nav-item svg { width: 18px; height: 18px; margin-right: 10px; flex-shrink: 0; }
+.sidebar-footer { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.healthy { background: var(--success); }
+.status-dot.degraded { background: var(--warning); }
+.status-dot.unhealthy { background: var(--danger); }
+
+/* Main */
+.main { margin-left: 240px; flex: 1; padding: 24px 32px; min-height: 100vh; }
+.page { display: none; }
+.page.active { display: block; }
+.page-header { margin-bottom: 24px; }
+.page-header h2 { font-size: 24px; font-weight: 700; color: var(--text); }
+.page-header p { color: var(--text-muted); margin-top: 4px; font-size: 14px; }
+
+/* Cards */
+.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.card-header h3 { font-size: 16px; font-weight: 600; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+.stat-card .label { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: var(--text); }
+.stat-card .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: var(--danger-hover); }
+.btn-outline { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-outline:hover { background: var(--bg); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+th { font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; background: #f8fafc; }
+tr:hover td { background: #f8fafc; }
+
+/* Forms */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--text); }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; font-family: inherit; background: #fff; color: var(--text);
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+}
+.form-group textarea { min-height: 80px; resize: vertical; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-help { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+/* Toggle Switch */
+.toggle { display: flex; align-items: center; gap: 10px; }
+.toggle-switch { position: relative; width: 44px; height: 24px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background: #cbd5e1; border-radius: 24px; transition: 0.2s; }
+.toggle-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px;
+  background: white; border-radius: 50%; transition: 0.2s; }
+.toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
+.toggle-label { font-size: 14px; font-weight: 500; }
+
+/* Badge */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-allow { background: #dcfce7; color: #166534; }
+.badge-deny { background: #fef2f2; color: #991b1b; }
+.badge-proceed { background: #dbeafe; color: #1e40af; }
+.badge-block { background: #fef2f2; color: #991b1b; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: var(--card-bg); border-radius: var(--radius); padding: 24px; width: 520px; max-width: 90vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+.modal h3 { font-size: 18px; margin-bottom: 16px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+/* Toast */
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 200; }
+.toast { padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 13px; margin-bottom: 8px;
+  animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--primary); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Code */
+.code-block { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 6px;
+  font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; overflow-x: auto; white-space: pre; max-height: 400px; overflow-y: auto; }
+
+/* Log entry */
+.log-entry { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+.log-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #f8fafc; cursor: pointer; }
+.log-header:hover { background: #f1f5f9; }
+.log-time { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+.log-endpoint { font-weight: 600; font-size: 13px; }
+.log-detail { padding: 12px 14px; border-top: 1px solid var(--border); display: none; }
+.log-entry.expanded .log-detail { display: block; }
+
+/* Experiment card */
+.experiment-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.variant-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+.variant-bar div { height: 100%; }
+.variant-a { background: var(--primary); }
+.variant-b { background: var(--warning); }
+.variant-c { background: var(--success); }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Hook Server</h1>
+    <p>CATE Webhook Dashboard</p>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active" data-page="dashboard">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      Dashboard
+    </div>
+
+    <div class="nav-section">Rules</div>
+    <div class="nav-item" data-page="access">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+      Access Control
+    </div>
+    <div class="nav-item" data-page="pre">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      Pre-Execution
+    </div>
+    <div class="nav-item" data-page="post">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+      Post-Execution
+    </div>
+
+    <div class="nav-section">Features</div>
+    <div class="nav-item" data-page="pii">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+      PII Redaction
+    </div>
+    <div class="nav-item" data-page="abtesting">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      A/B Testing
+    </div>
+    <div class="nav-item" data-page="arcade">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+      Tool Catalog
+    </div>
+
+    <div class="nav-section">System</div>
+    <div class="nav-item" data-page="logs">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      Request Logs
+    </div>
+    <div class="nav-item" data-page="config">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Raw Config
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <span class="status-dot healthy" id="health-dot"></span>
+    <span id="health-text">Healthy</span>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+  <!-- Dashboard Page -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-header">
+      <h2>Dashboard</h2>
+      <p>Overview of your hook server configuration and activity</p>
+    </div>
+    <div class="card-grid">
+      <div class="stat-card">
+        <div class="label">Access Rules</div>
+        <div class="value" id="stat-access-rules">0</div>
+        <div class="sub">Default: <span id="stat-access-default">allow</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Pre-Execution Rules</div>
+        <div class="value" id="stat-pre-rules">0</div>
+        <div class="sub">Default: <span id="stat-pre-default">proceed</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Post-Execution Rules</div>
+        <div class="value" id="stat-post-rules">0</div>
+        <div class="sub">Default: <span id="stat-post-default">proceed</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">PII Redaction</div>
+        <div class="value" id="stat-pii-status">Off</div>
+        <div class="sub" id="stat-pii-mode">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">A/B Experiments</div>
+        <div class="value" id="stat-ab-count">0</div>
+        <div class="sub" id="stat-ab-status">Disabled</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Request Log</div>
+        <div class="value" id="stat-log-count">0</div>
+        <div class="sub">Total requests logged</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Quick Actions</h3>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn btn-outline" onclick="navigate('access')">Manage Access Rules</button>
+        <button class="btn btn-outline" onclick="navigate('pii')">Configure PII Redaction</button>
+        <button class="btn btn-outline" onclick="navigate('abtesting')">Set Up A/B Test</button>
+        <button class="btn btn-outline" onclick="navigate('logs')">View Logs</button>
+        <button class="btn btn-outline" onclick="navigate('config')">Edit Raw Config</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Access Control Page -->
+  <div class="page" id="page-access">
+    <div class="page-header">
+      <h2>Access Control</h2>
+      <p>Control which tools and toolkits users can discover and use</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Default Action</h3>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-sm" id="access-default-allow" onclick="setAccessDefault('allow')">Allow</button>
+        <button class="btn btn-sm" id="access-default-deny" onclick="setAccessDefault('deny')">Deny</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Access Rules</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddAccessRuleModal()">+ Add Rule</button>
+      </div>
+      <table>
+        <thead><tr><th>User ID</th><th>Toolkit</th><th>Tool</th><th>Action</th><th>Reason</th><th></th></tr></thead>
+        <tbody id="access-rules-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pre-Execution Page -->
+  <div class="page" id="page-pre">
+    <div class="page-header">
+      <h2>Pre-Execution Rules</h2>
+      <p>Validate and modify requests before tool execution</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Default Action</h3>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-sm" id="pre-default-proceed" onclick="setPreDefault('proceed')">Proceed</button>
+        <button class="btn btn-sm" id="pre-default-block" onclick="setPreDefault('block')">Block</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Rules</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddPreRuleModal()">+ Add Rule</button>
+      </div>
+      <table>
+        <thead><tr><th>User</th><th>Toolkit</th><th>Tool</th><th>Input Match</th><th>Action</th><th>Message</th><th></th></tr></thead>
+        <tbody id="pre-rules-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Post-Execution Page -->
+  <div class="page" id="page-post">
+    <div class="page-header">
+      <h2>Post-Execution Rules</h2>
+      <p>Filter and transform responses after tool execution</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Default Action</h3>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-sm" id="post-default-proceed" onclick="setPostDefault('proceed')">Proceed</button>
+        <button class="btn btn-sm" id="post-default-block" onclick="setPostDefault('block')">Block</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Rules</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddPostRuleModal()">+ Add Rule</button>
+      </div>
+      <table>
+        <thead><tr><th>User</th><th>Toolkit</th><th>Tool</th><th>Output Match</th><th>Action</th><th>Message</th><th></th></tr></thead>
+        <tbody id="post-rules-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PII Redaction Page -->
+  <div class="page" id="page-pii">
+    <div class="page-header">
+      <h2>PII Redaction</h2>
+      <p>Detect and redact personally identifiable information from tool outputs</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>PII Protection</h3>
+      </div>
+      <div class="toggle" style="margin-bottom: 16px;">
+        <label class="toggle-switch">
+          <input type="checkbox" id="pii-enabled" onchange="updatePIIConfig()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">Enable PII Detection</span>
+      </div>
+      <div class="form-group">
+        <label>Mode</label>
+        <select id="pii-mode" onchange="updatePIIConfig()">
+          <option value="redact">Redact - Replace PII with placeholders</option>
+          <option value="block">Block - Reject responses containing PII</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>PII Types</h3>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="toggle">
+          <label class="toggle-switch"><input type="checkbox" id="pii-email" onchange="updatePIIConfig()"><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Email Addresses</span>
+        </div>
+        <div class="toggle">
+          <label class="toggle-switch"><input type="checkbox" id="pii-ip" onchange="updatePIIConfig()"><span class="toggle-slider"></span></label>
+          <span class="toggle-label">IP Addresses</span>
+        </div>
+        <div class="toggle">
+          <label class="toggle-switch"><input type="checkbox" id="pii-ssn" onchange="updatePIIConfig()"><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Social Security Numbers</span>
+        </div>
+        <div class="toggle">
+          <label class="toggle-switch"><input type="checkbox" id="pii-phone" onchange="updatePIIConfig()"><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Phone Numbers</span>
+        </div>
+        <div class="toggle">
+          <label class="toggle-switch"><input type="checkbox" id="pii-cc" onchange="updatePIIConfig()"><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Credit Card Numbers</span>
+        </div>
+        <div class="toggle">
+          <label class="toggle-switch"><input type="checkbox" id="pii-dob" onchange="updatePIIConfig()"><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Dates of Birth</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Custom Patterns</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddCustomPatternModal()">+ Add Pattern</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Pattern (Regex)</th><th>Replacement</th><th></th></tr></thead>
+        <tbody id="pii-custom-body"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Test PII Redaction</h3>
+      </div>
+      <div class="form-group">
+        <label>Input Text</label>
+        <textarea id="pii-test-input" placeholder="Enter text to test PII detection, e.g.: Contact john@example.com or call 555-123-4567. SSN: 123-45-6789"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="testPIIRedaction()">Test Redaction</button>
+      <div id="pii-test-result" style="margin-top: 12px;"></div>
+    </div>
+  </div>
+
+  <!-- A/B Testing Page -->
+  <div class="page" id="page-abtesting">
+    <div class="page-header">
+      <h2>A/B Testing</h2>
+      <p>Route tool executions to different variants for testing and gradual rollouts</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>A/B Testing</h3></div>
+      <div class="toggle" style="margin-bottom: 12px;">
+        <label class="toggle-switch">
+          <input type="checkbox" id="ab-enabled" onchange="updateABEnabled()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">Enable A/B Testing</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Experiments</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddExperimentModal()">+ New Experiment</button>
+      </div>
+      <div id="experiments-list"></div>
+    </div>
+  </div>
+
+  <!-- Arcade / Tool Catalog Page -->
+  <div class="page" id="page-arcade">
+    <div class="page-header">
+      <h2>Tool Catalog</h2>
+      <p>Fetch and browse tools from the API for use in A/B tests</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>API Configuration</h3></div>
+      <div class="toggle" style="margin-bottom: 12px;">
+        <label class="toggle-switch">
+          <input type="checkbox" id="arcade-enabled" onchange="updateArcadeConfig()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">Enable Tool Fetching</span>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>API URL</label>
+          <input type="text" id="arcade-url" placeholder="https://api.example.dev" onchange="updateArcadeConfig()">
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" id="arcade-key" placeholder="Your API key" onchange="updateArcadeConfig()">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Fetch Interval (seconds)</label>
+        <input type="number" id="arcade-interval" value="300" min="30" onchange="updateArcadeConfig()">
+      </div>
+      <button class="btn btn-primary" onclick="fetchArcadeTools()">Fetch Tools Now</button>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Fetched Tools</h3>
+        <span id="arcade-last-fetch" style="font-size: 12px; color: var(--text-muted);"></span>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Toolkit</th><th>Version</th><th>Description</th></tr></thead>
+        <tbody id="arcade-tools-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Request Logs Page -->
+  <div class="page" id="page-logs">
+    <div class="page-header">
+      <h2>Request Logs</h2>
+      <p>View all webhook requests processed by this server</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Logs <span id="log-count-badge" style="font-size: 13px; color: var(--text-muted); font-weight: 400;"></span></h3>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadLogs()">Refresh</button>
+          <button class="btn btn-danger btn-sm" onclick="clearLogs()">Clear All</button>
+        </div>
+      </div>
+      <div id="logs-list"></div>
+    </div>
+  </div>
+
+  <!-- Raw Config Page -->
+  <div class="page" id="page-config">
+    <div class="page-header">
+      <h2>Raw Configuration</h2>
+      <p>View and edit the full configuration as JSON</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Configuration</h3>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadConfig()">Reload</button>
+          <button class="btn btn-primary btn-sm" onclick="saveRawConfig()">Save</button>
+        </div>
+      </div>
+      <textarea id="raw-config" style="width: 100%; min-height: 500px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: #1e293b; color: #e2e8f0;"></textarea>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// State
+// =============================================================================
+let config = {};
+const API = '';
+
+// =============================================================================
+// Navigation
+// =============================================================================
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+  if (page === 'logs') loadLogs();
+  if (page === 'config') loadRawConfig();
+  if (page === 'arcade') loadArcadeTools();
+}
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => navigate(item.dataset.page));
+});
+
+// =============================================================================
+// Toast Notifications
+// =============================================================================
+function toast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = message;
+  container.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// =============================================================================
+// Modal
+// =============================================================================
+function showModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('active');
+}
+function hideModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+}
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) hideModal();
+});
+
+// =============================================================================
+// API Helpers
+// =============================================================================
+async function apiGet(path) {
+  const r = await fetch(API + path);
+  return r.json();
+}
+async function apiPut(path, data) {
+  const r = await fetch(API + path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  return r.json();
+}
+async function apiPost(path, data) {
+  const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  return r.json();
+}
+async function apiDelete(path) {
+  const r = await fetch(API + path, { method: 'DELETE' });
+  return r.json();
+}
+
+// =============================================================================
+// Config Load / Save
+// =============================================================================
+async function loadConfig() {
+  config = await apiGet('/api/config');
+  renderAll();
+}
+
+async function saveConfig(section, data) {
+  const payload = {};
+  payload[section] = data;
+  await apiPut('/api/config', payload);
+  await loadConfig();
+  toast('Configuration saved');
+}
+
+async function saveFullConfig(data) {
+  await apiPut('/api/config', data);
+  await loadConfig();
+  toast('Configuration saved');
+}
+
+// =============================================================================
+// Render All
+// =============================================================================
+function renderAll() {
+  renderDashboard();
+  renderAccessRules();
+  renderPreRules();
+  renderPostRules();
+  renderPIIConfig();
+  renderABTesting();
+  renderArcadeConfig();
+  renderHealthStatus();
+}
+
+// =============================================================================
+// Dashboard
+// =============================================================================
+function renderDashboard() {
+  document.getElementById('stat-access-rules').textContent = (config.access?.rules || []).length;
+  document.getElementById('stat-access-default').textContent = config.access?.default_action || 'allow';
+  document.getElementById('stat-pre-rules').textContent = (config.pre?.rules || []).length;
+  document.getElementById('stat-pre-default').textContent = config.pre?.default_action || 'proceed';
+  document.getElementById('stat-post-rules').textContent = (config.post?.rules || []).length;
+  document.getElementById('stat-post-default').textContent = config.post?.default_action || 'proceed';
+  document.getElementById('stat-pii-status').textContent = config.pii?.enabled ? 'On' : 'Off';
+  document.getElementById('stat-pii-mode').textContent = config.pii?.enabled ? `Mode: ${config.pii.mode}` : '--';
+  const exps = (config.ab_testing?.experiments || []).filter(e => e.enabled);
+  document.getElementById('stat-ab-count').textContent = exps.length;
+  document.getElementById('stat-ab-status').textContent = config.ab_testing?.enabled ? `${exps.length} active` : 'Disabled';
+}
+
+function renderHealthStatus() {
+  const dot = document.getElementById('health-dot');
+  const text = document.getElementById('health-text');
+  const status = config.health?.status || 'healthy';
+  dot.className = 'status-dot ' + status;
+  text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+// =============================================================================
+// Access Rules
+// =============================================================================
+function renderAccessRules() {
+  const rules = config.access?.rules || [];
+  const defAction = config.access?.default_action || 'allow';
+  document.getElementById('access-default-allow').className = 'btn btn-sm ' + (defAction === 'allow' ? 'btn-primary' : 'btn-outline');
+  document.getElementById('access-default-deny').className = 'btn btn-sm ' + (defAction === 'deny' ? 'btn-danger' : 'btn-outline');
+  const tbody = document.getElementById('access-rules-body');
+  tbody.innerHTML = rules.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">No rules configured. All requests will be ' + defAction + 'ed.</td></tr>' :
+    rules.map((r, i) => `<tr>
+      <td>${r.user_id || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.toolkit || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.tool || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td><span class="badge badge-${r.action}">${r.action}</span></td>
+      <td>${r.reason || ''}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteAccessRule(${i})">Delete</button></td>
+    </tr>`).join('');
+}
+
+function setAccessDefault(action) {
+  config.access.default_action = action;
+  saveConfig('access', config.access);
+}
+
+function showAddAccessRuleModal() {
+  showModal(`
+    <h3>Add Access Rule</h3>
+    <div class="form-group"><label>User ID</label><input type="text" id="ar-user" placeholder="Leave empty for any user"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Toolkit</label><input type="text" id="ar-toolkit" placeholder="e.g. Email or Admin*"></div>
+      <div class="form-group"><label>Tool</label><input type="text" id="ar-tool" placeholder="e.g. sendEmail"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Action</label><select id="ar-action"><option value="deny">Deny</option><option value="allow">Allow</option></select></div>
+      <div class="form-group"><label>Reason</label><input type="text" id="ar-reason" placeholder="Optional reason"></div>
+    </div>
+    <div class="form-help">Patterns: exact match, glob (Admin*), or regex (~^test-.*)</div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addAccessRule()">Add Rule</button>
+    </div>
+  `);
+}
+
+function addAccessRule() {
+  const rule = {
+    user_id: document.getElementById('ar-user').value,
+    toolkit: document.getElementById('ar-toolkit').value,
+    tool: document.getElementById('ar-tool').value,
+    action: document.getElementById('ar-action').value,
+    reason: document.getElementById('ar-reason').value
+  };
+  if (!config.access.rules) config.access.rules = [];
+  config.access.rules.push(rule);
+  saveConfig('access', config.access);
+  hideModal();
+}
+
+function deleteAccessRule(idx) {
+  config.access.rules.splice(idx, 1);
+  saveConfig('access', config.access);
+}
+
+// =============================================================================
+// Pre-Execution Rules
+// =============================================================================
+function renderPreRules() {
+  const rules = config.pre?.rules || [];
+  const defAction = config.pre?.default_action || 'proceed';
+  document.getElementById('pre-default-proceed').className = 'btn btn-sm ' + (defAction === 'proceed' ? 'btn-primary' : 'btn-outline');
+  document.getElementById('pre-default-block').className = 'btn btn-sm ' + (defAction === 'block' ? 'btn-danger' : 'btn-outline');
+  const tbody = document.getElementById('pre-rules-body');
+  tbody.innerHTML = rules.length === 0 ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">No rules configured.</td></tr>' :
+    rules.map((r, i) => `<tr>
+      <td>${r.user_id || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.toolkit || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.tool || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.input_match || ''}</td>
+      <td><span class="badge badge-${r.action}">${r.action}</span></td>
+      <td>${r.error_message || ''}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deletePreRule(${i})">Delete</button></td>
+    </tr>`).join('');
+}
+
+function setPreDefault(action) {
+  config.pre.default_action = action;
+  saveConfig('pre', config.pre);
+}
+
+function showAddPreRuleModal() {
+  showModal(`
+    <h3>Add Pre-Execution Rule</h3>
+    <div class="form-group"><label>User ID</label><input type="text" id="pr-user" placeholder="Leave empty for any user"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Toolkit</label><input type="text" id="pr-toolkit" placeholder="e.g. Email"></div>
+      <div class="form-group"><label>Tool</label><input type="text" id="pr-tool" placeholder="e.g. sendEmail"></div>
+    </div>
+    <div class="form-group"><label>Input Match</label><input type="text" id="pr-input" placeholder="e.g. to contains @blocked.com">
+      <div class="form-help">Format: key=value, key contains value, or key (exists check)</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Action</label><select id="pr-action"><option value="block">Block</option><option value="proceed">Proceed</option><option value="rate_limit">Rate Limit</option></select></div>
+      <div class="form-group"><label>Error Message</label><input type="text" id="pr-error" placeholder="Message shown to agent"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addPreRule()">Add Rule</button>
+    </div>
+  `);
+}
+
+function addPreRule() {
+  const rule = {
+    user_id: document.getElementById('pr-user').value,
+    toolkit: document.getElementById('pr-toolkit').value,
+    tool: document.getElementById('pr-tool').value,
+    input_match: document.getElementById('pr-input').value,
+    action: document.getElementById('pr-action').value,
+    error_message: document.getElementById('pr-error').value
+  };
+  if (!config.pre.rules) config.pre.rules = [];
+  config.pre.rules.push(rule);
+  saveConfig('pre', config.pre);
+  hideModal();
+}
+
+function deletePreRule(idx) {
+  config.pre.rules.splice(idx, 1);
+  saveConfig('pre', config.pre);
+}
+
+// =============================================================================
+// Post-Execution Rules
+// =============================================================================
+function renderPostRules() {
+  const rules = config.post?.rules || [];
+  const defAction = config.post?.default_action || 'proceed';
+  document.getElementById('post-default-proceed').className = 'btn btn-sm ' + (defAction === 'proceed' ? 'btn-primary' : 'btn-outline');
+  document.getElementById('post-default-block').className = 'btn btn-sm ' + (defAction === 'block' ? 'btn-danger' : 'btn-outline');
+  const tbody = document.getElementById('post-rules-body');
+  tbody.innerHTML = rules.length === 0 ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">No rules configured.</td></tr>' :
+    rules.map((r, i) => `<tr>
+      <td>${r.user_id || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.toolkit || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.tool || '<em style="color:var(--text-muted)">any</em>'}</td>
+      <td>${r.output_match || ''}</td>
+      <td><span class="badge badge-${r.action}">${r.action}</span></td>
+      <td>${r.error_message || ''}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deletePostRule(${i})">Delete</button></td>
+    </tr>`).join('');
+}
+
+function setPostDefault(action) {
+  config.post.default_action = action;
+  saveConfig('post', config.post);
+}
+
+function showAddPostRuleModal() {
+  showModal(`
+    <h3>Add Post-Execution Rule</h3>
+    <div class="form-group"><label>User ID</label><input type="text" id="por-user" placeholder="Leave empty for any user"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Toolkit</label><input type="text" id="por-toolkit" placeholder="e.g. Database"></div>
+      <div class="form-group"><label>Tool</label><input type="text" id="por-tool" placeholder="e.g. query"></div>
+    </div>
+    <div class="form-group"><label>Output Match</label><input type="text" id="por-output" placeholder="e.g. data contains CONFIDENTIAL">
+      <div class="form-help">Format: key=value, key contains value, or key (exists check)</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Action</label><select id="por-action"><option value="block">Block</option><option value="proceed">Proceed</option></select></div>
+      <div class="form-group"><label>Error Message</label><input type="text" id="por-error" placeholder="Message shown to agent"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addPostRule()">Add Rule</button>
+    </div>
+  `);
+}
+
+function addPostRule() {
+  const rule = {
+    user_id: document.getElementById('por-user').value,
+    toolkit: document.getElementById('por-toolkit').value,
+    tool: document.getElementById('por-tool').value,
+    output_match: document.getElementById('por-output').value,
+    action: document.getElementById('por-action').value,
+    error_message: document.getElementById('por-error').value
+  };
+  if (!config.post.rules) config.post.rules = [];
+  config.post.rules.push(rule);
+  saveConfig('post', config.post);
+  hideModal();
+}
+
+function deletePostRule(idx) {
+  config.post.rules.splice(idx, 1);
+  saveConfig('post', config.post);
+}
+
+// =============================================================================
+// PII Configuration
+// =============================================================================
+function renderPIIConfig() {
+  const pii = config.pii || {};
+  document.getElementById('pii-enabled').checked = pii.enabled || false;
+  document.getElementById('pii-mode').value = pii.mode || 'redact';
+  const types = pii.types || {};
+  document.getElementById('pii-email').checked = types.email || false;
+  document.getElementById('pii-ip').checked = types.ip_address || false;
+  document.getElementById('pii-ssn').checked = types.ssn || false;
+  document.getElementById('pii-phone').checked = types.phone_number || false;
+  document.getElementById('pii-cc').checked = types.credit_card || false;
+  document.getElementById('pii-dob').checked = types.date_of_birth || false;
+  const customs = pii.custom_patterns || [];
+  const tbody = document.getElementById('pii-custom-body');
+  tbody.innerHTML = customs.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No custom patterns.</td></tr>' :
+    customs.map((c, i) => `<tr>
+      <td>${c.name}</td>
+      <td><code>${c.pattern}</code></td>
+      <td>${c.replacement}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteCustomPattern(${i})">Delete</button></td>
+    </tr>`).join('');
+}
+
+function updatePIIConfig() {
+  config.pii = {
+    enabled: document.getElementById('pii-enabled').checked,
+    mode: document.getElementById('pii-mode').value,
+    types: {
+      email: document.getElementById('pii-email').checked,
+      ip_address: document.getElementById('pii-ip').checked,
+      ssn: document.getElementById('pii-ssn').checked,
+      phone_number: document.getElementById('pii-phone').checked,
+      credit_card: document.getElementById('pii-cc').checked,
+      date_of_birth: document.getElementById('pii-dob').checked
+    },
+    custom_patterns: config.pii?.custom_patterns || []
+  };
+  saveConfig('pii', config.pii);
+}
+
+function showAddCustomPatternModal() {
+  showModal(`
+    <h3>Add Custom PII Pattern</h3>
+    <div class="form-group"><label>Name</label><input type="text" id="cp-name" placeholder="e.g. employee_id"></div>
+    <div class="form-group"><label>Regex Pattern</label><input type="text" id="cp-pattern" placeholder="e.g. EMP-\\d{6}"></div>
+    <div class="form-group"><label>Replacement</label><input type="text" id="cp-replacement" placeholder="e.g. [EMP-REDACTED]"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addCustomPattern()">Add Pattern</button>
+    </div>
+  `);
+}
+
+function addCustomPattern() {
+  const pattern = {
+    name: document.getElementById('cp-name').value,
+    pattern: document.getElementById('cp-pattern').value,
+    replacement: document.getElementById('cp-replacement').value
+  };
+  if (!config.pii.custom_patterns) config.pii.custom_patterns = [];
+  config.pii.custom_patterns.push(pattern);
+  saveConfig('pii', config.pii);
+  hideModal();
+}
+
+function deleteCustomPattern(idx) {
+  config.pii.custom_patterns.splice(idx, 1);
+  saveConfig('pii', config.pii);
+}
+
+async function testPIIRedaction() {
+  const input = document.getElementById('pii-test-input').value;
+  if (!input) return;
+  try {
+    const result = await apiPost('/api/pii/test', { text: input });
+    const div = document.getElementById('pii-test-result');
+    if (result.matches && result.matches.length > 0) {
+      div.innerHTML = `
+        <div class="card" style="background: #fef2f2; border-color: #fecaca; margin: 0;">
+          <strong>PII Detected (${result.matches.length} instances):</strong>
+          <ul style="margin: 8px 0 0 20px; font-size: 13px;">${result.matches.map(m => `<li>${m.type}: <code>${m.value}</code></li>`).join('')}</ul>
+          <div style="margin-top: 12px;"><strong>Redacted output:</strong></div>
+          <div class="code-block" style="margin-top: 4px;">${escHtml(result.redacted)}</div>
+        </div>`;
+    } else {
+      div.innerHTML = '<div class="card" style="background: #dcfce7; border-color: #bbf7d0; margin: 0;"><strong>No PII detected.</strong></div>';
+    }
+  } catch (e) {
+    toast('Test failed: ' + e.message, 'error');
+  }
+}
+
+// =============================================================================
+// A/B Testing
+// =============================================================================
+function renderABTesting() {
+  const ab = config.ab_testing || {};
+  document.getElementById('ab-enabled').checked = ab.enabled || false;
+  const experiments = ab.experiments || [];
+  const container = document.getElementById('experiments-list');
+  if (experiments.length === 0) {
+    container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">No experiments configured.</p>';
+    return;
+  }
+  container.innerHTML = experiments.map((exp, i) => {
+    const totalWeight = exp.variants ? exp.variants.reduce((s, v) => s + v.weight, 0) : 0;
+    const colors = ['variant-a', 'variant-b', 'variant-c'];
+    return `<div class="experiment-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong>${escHtml(exp.name)}</strong>
+          <span class="badge ${exp.enabled ? 'badge-allow' : 'badge-deny'}" style="margin-left: 8px;">${exp.enabled ? 'Active' : 'Paused'}</span>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-outline btn-sm" onclick="toggleExperiment(${i})">${exp.enabled ? 'Pause' : 'Enable'}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteExperiment(${i})">Delete</button>
+        </div>
+      </div>
+      <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        Tool: ${escHtml(exp.toolkit || '*')}.${escHtml(exp.tool || '*')}
+        ${exp.user_targeting ? ' | Targeting: ' + (exp.user_targeting.include || []).join(', ') : ''}
+      </div>
+      <div class="variant-bar">
+        ${(exp.variants || []).map((v, vi) => `<div class="${colors[vi % colors.length]}" style="width: ${totalWeight > 0 ? (v.weight / totalWeight * 100) : 0}%;" title="${v.name}: ${v.weight}%"></div>`).join('')}
+      </div>
+      <div style="display: flex; gap: 16px; font-size: 12px;">
+        ${(exp.variants || []).map((v, vi) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;" class="${colors[vi % colors.length]}"></span> ${escHtml(v.name)} (${v.weight}%)${v.server ? ' → ' + escHtml(v.server.uri || '') : ''}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateABEnabled() {
+  if (!config.ab_testing) config.ab_testing = { enabled: false, experiments: [] };
+  config.ab_testing.enabled = document.getElementById('ab-enabled').checked;
+  saveConfig('ab_testing', config.ab_testing);
+}
+
+function toggleExperiment(idx) {
+  config.ab_testing.experiments[idx].enabled = !config.ab_testing.experiments[idx].enabled;
+  saveConfig('ab_testing', config.ab_testing);
+}
+
+function deleteExperiment(idx) {
+  config.ab_testing.experiments.splice(idx, 1);
+  saveConfig('ab_testing', config.ab_testing);
+}
+
+function showAddExperimentModal() {
+  showModal(`
+    <h3>New Experiment</h3>
+    <div class="form-group"><label>Name</label><input type="text" id="exp-name" placeholder="e.g. search-v2-rollout"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Toolkit</label><input type="text" id="exp-toolkit" placeholder="e.g. Search (or * for any)"></div>
+      <div class="form-group"><label>Tool</label><input type="text" id="exp-tool" placeholder="e.g. WebSearch"></div>
+    </div>
+    <div style="border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+      <strong style="font-size: 13px;">Variant A (Control)</strong>
+      <div class="form-row" style="margin-top: 8px;">
+        <div class="form-group"><label>Name</label><input type="text" id="exp-va-name" value="control"></div>
+        <div class="form-group"><label>Weight (%)</label><input type="number" id="exp-va-weight" value="80" min="0" max="100"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Server URI</label><input type="text" id="exp-va-uri" placeholder="http://server-a:8080"></div>
+        <div class="form-group"><label>Server Name</label><input type="text" id="exp-va-sname" placeholder="server-a"></div>
+      </div>
+    </div>
+    <div style="border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+      <strong style="font-size: 13px;">Variant B (Treatment)</strong>
+      <div class="form-row" style="margin-top: 8px;">
+        <div class="form-group"><label>Name</label><input type="text" id="exp-vb-name" value="treatment"></div>
+        <div class="form-group"><label>Weight (%)</label><input type="number" id="exp-vb-weight" value="20" min="0" max="100"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Server URI</label><input type="text" id="exp-vb-uri" placeholder="http://server-b:8080"></div>
+        <div class="form-group"><label>Server Name</label><input type="text" id="exp-vb-sname" placeholder="server-b"></div>
+      </div>
+    </div>
+    <div class="form-group"><label>User Targeting (optional, comma-separated patterns)</label><input type="text" id="exp-targeting" placeholder="e.g. beta-user-*, internal-*"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addExperiment()">Create Experiment</button>
+    </div>
+  `);
+}
+
+function addExperiment() {
+  const exp = {
+    name: document.getElementById('exp-name').value,
+    toolkit: document.getElementById('exp-toolkit').value,
+    tool: document.getElementById('exp-tool').value,
+    enabled: true,
+    variants: [
+      {
+        name: document.getElementById('exp-va-name').value || 'control',
+        weight: parseInt(document.getElementById('exp-va-weight').value) || 80,
+        server: {
+          name: document.getElementById('exp-va-sname').value || 'server-a',
+          uri: document.getElementById('exp-va-uri').value,
+          type: 'arcade'
+        }
+      },
+      {
+        name: document.getElementById('exp-vb-name').value || 'treatment',
+        weight: parseInt(document.getElementById('exp-vb-weight').value) || 20,
+        server: {
+          name: document.getElementById('exp-vb-sname').value || 'server-b',
+          uri: document.getElementById('exp-vb-uri').value,
+          type: 'arcade'
+        }
+      }
+    ]
+  };
+  const targeting = document.getElementById('exp-targeting').value;
+  if (targeting) {
+    exp.user_targeting = { include: targeting.split(',').map(s => s.trim()), exclude: [] };
+  }
+  if (!config.ab_testing) config.ab_testing = { enabled: true, experiments: [] };
+  config.ab_testing.experiments.push(exp);
+  saveConfig('ab_testing', config.ab_testing);
+  hideModal();
+}
+
+// =============================================================================
+// Arcade / Tool Catalog
+// =============================================================================
+function renderArcadeConfig() {
+  const arc = config.arcade || {};
+  document.getElementById('arcade-enabled').checked = arc.enabled || false;
+  document.getElementById('arcade-url').value = arc.api_url || '';
+  document.getElementById('arcade-key').value = arc.api_key || '';
+  document.getElementById('arcade-interval').value = arc.fetch_interval_seconds || 300;
+}
+
+function updateArcadeConfig() {
+  config.arcade = {
+    enabled: document.getElementById('arcade-enabled').checked,
+    api_url: document.getElementById('arcade-url').value,
+    api_key: document.getElementById('arcade-key').value,
+    fetch_interval_seconds: parseInt(document.getElementById('arcade-interval').value) || 300
+  };
+  saveConfig('arcade', config.arcade);
+}
+
+async function fetchArcadeTools() {
+  try {
+    await apiPost('/api/arcade/fetch', {});
+    toast('Tool fetch initiated');
+    setTimeout(loadArcadeTools, 1000);
+  } catch (e) {
+    toast('Fetch failed: ' + e.message, 'error');
+  }
+}
+
+async function loadArcadeTools() {
+  try {
+    const data = await apiGet('/api/arcade/tools');
+    const tbody = document.getElementById('arcade-tools-body');
+    const tools = data.tools || [];
+    if (data.last_fetch) {
+      document.getElementById('arcade-last-fetch').textContent = 'Last fetch: ' + new Date(data.last_fetch).toLocaleString();
+    }
+    tbody.innerHTML = tools.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No tools fetched. Configure API settings and click Fetch.</td></tr>' :
+      tools.map(t => `<tr>
+        <td><strong>${escHtml(t.name)}</strong></td>
+        <td>${escHtml(t.toolkit?.name || '')}</td>
+        <td>${escHtml(t.version || '')}</td>
+        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(t.description || '')}</td>
+      </tr>`).join('');
+  } catch (e) {
+    // Silently fail
+  }
+}
+
+// =============================================================================
+// Request Logs
+// =============================================================================
+async function loadLogs() {
+  try {
+    const data = await apiGet('/api/logs');
+    const logs = data.logs || [];
+    document.getElementById('stat-log-count').textContent = logs.length;
+    document.getElementById('log-count-badge').textContent = `(${logs.length})`;
+    const container = document.getElementById('logs-list');
+    if (logs.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">No requests logged yet.</p>';
+      return;
+    }
+    container.innerHTML = logs.slice().reverse().map((l, i) => `
+      <div class="log-entry" onclick="this.classList.toggle('expanded')">
+        <div class="log-header">
+          <span class="log-time">${new Date(l.timestamp).toLocaleTimeString()}</span>
+          <span class="log-endpoint">${escHtml(l.endpoint)}</span>
+          ${l.rule_match ? '<span class="badge badge-deny">' + escHtml(l.rule_match) + '</span>' : ''}
+          ${l.ab_variant ? '<span class="badge badge-proceed">A/B: ' + escHtml(l.ab_variant) + '</span>' : ''}
+          ${l.pii_found && l.pii_found.length > 0 ? '<span class="badge badge-deny">PII: ' + l.pii_found.length + '</span>' : ''}
+        </div>
+        <div class="log-detail">
+          <div style="margin-bottom: 8px;"><strong>Request:</strong></div>
+          <div class="code-block">${escHtml(JSON.stringify(l.body, null, 2))}</div>
+          <div style="margin: 8px 0;"><strong>Response:</strong></div>
+          <div class="code-block">${escHtml(JSON.stringify(l.response, null, 2))}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    toast('Failed to load logs', 'error');
+  }
+}
+
+async function clearLogs() {
+  await apiDelete('/api/logs');
+  toast('Logs cleared');
+  loadLogs();
+}
+
+// =============================================================================
+// Raw Config
+// =============================================================================
+async function loadRawConfig() {
+  const data = await apiGet('/api/config');
+  document.getElementById('raw-config').value = JSON.stringify(data, null, 2);
+}
+
+async function saveRawConfig() {
+  try {
+    const data = JSON.parse(document.getElementById('raw-config').value);
+    await saveFullConfig(data);
+  } catch (e) {
+    toast('Invalid JSON: ' + e.message, 'error');
+  }
+}
+
+// =============================================================================
+// Utility
+// =============================================================================
+function escHtml(s) {
+  if (s === null || s === undefined) return '';
+  const div = document.createElement('div');
+  div.textContent = String(s);
+  return div.innerHTML;
+}
+
+// =============================================================================
+// Init
+// =============================================================================
+loadConfig();
+setInterval(async () => {
+  const data = await apiGet('/api/logs');
+  document.getElementById('stat-log-count').textContent = (data.logs || []).length;
+}, 10000);
+</script>
+</body>
+</html>
