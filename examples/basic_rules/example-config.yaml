@@ -1,0 +1,123 @@
+# Example Webhook Test Server Configuration
+#
+# This file demonstrates all available configuration options.
+# The server hot-reloads this file when it changes.
+#
+# Usage: go run ./tools/webhook-test-server -config example-config.yaml
+
+# Health endpoint configuration
+health:
+  status: healthy # Options: healthy, degraded, unhealthy
+
+# Access control hook configuration
+# Determines which tools a user can see/use
+access:
+  # What to do when no rule matches: "allow" or "deny"
+  default_action: allow
+
+  # Rules are evaluated in order - first match wins
+  rules:
+    # Block a specific user from all tools
+    - user_id: 'sterling2@arcade.dev'
+      action: deny
+      reason: 'User is suspended'
+
+    # Block a specific toolkit for everyone
+    - toolkit: 'DangerousToolkit'
+      action: deny
+      reason: 'Toolkit is disabled'
+
+    # Block a specific tool
+    - toolkit: 'Simple'
+      tool: 'Greet'
+      version: '1.0.0'
+      action: deny
+      reason: 'Bulk email is disabled'
+
+    # Allow specific user access to admin tools
+    - user_id: 'admin-user'
+      toolkit: 'Admin*' # Glob pattern
+      action: allow
+
+    # Use regex for pattern matching (prefix with ~)
+    - user_id: '~^test-.*' # Matches users starting with "test-"
+      toolkit: 'Testing'
+      action: allow
+
+# Pre-execution hook configuration
+# Runs before a tool is executed - can block or modify the request
+pre:
+  # What to do when no rule matches: "proceed", "block", or "rate_limit"
+  default_action: proceed
+
+  rules:
+    # Block emails to certain domains
+    - toolkit: 'EchoServer'
+      tool: 'Echo'
+      input_match: 'send email to sterling@blocked.com'
+      action: block
+      error_message: 'Sending to blocked.com is not allowed'
+
+    # Rate limit a specific tool
+    - toolkit: 'Search'
+      tool: 'webSearch'
+      action: rate_limit
+      error_message: 'Too many search requests'
+
+    # Modify inputs before execution
+    - toolkit: 'EchoServer'
+      tool: 'Echo1'
+      action: proceed
+      override:
+        inputs:
+          # Force all file writes to a sandbox directory
+          message: 'replaced message'
+        headers:
+          X-Sandbox-Mode: 'true'
+
+    # Inject secrets
+    - toolkit: 'Database'
+      tool: '*' # All tools in this toolkit
+      action: proceed
+      override:
+        secrets:
+          DB_PASSWORD: 'test-password-123'
+          DB_HOST: 'localhost:5432'
+
+    # Override server routing
+    - user_id: 'test-user'
+      action: proceed
+      override:
+        server:
+          name: 'test-worker'
+          uri: 'http://localhost:9999'
+          type: 'arcade'
+
+# Post-execution hook configuration
+# Runs after tool execution - can block or modify the response
+post:
+  default_action: proceed
+
+  rules:
+    # Block if execution failed
+    - success: false
+      action: block
+      error_message: 'Tool execution failed'
+
+    # Redact sensitive data from output
+    - toolkit: 'Database'
+      tool: 'query'
+      action: proceed
+      override:
+        output:
+          # Replace actual data with redacted version
+          data: '[REDACTED]'
+          row_count: 0
+
+    # Modify output to add metadata
+    - toolkit: 'Email'
+      action: proceed
+      override:
+        output:
+          processed_by: 'webhook-test-server'
+          timestamp: '2024-01-01T00:00:00Z'
