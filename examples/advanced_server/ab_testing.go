@@ -23,10 +23,12 @@ type ABTestManager struct {
 
 // ExperimentStats tracks usage statistics for an experiment.
 type ExperimentStats struct {
-	Name            string         `json:"name"`
-	TotalRequests   int            `json:"total_requests"`
-	VariantCounts   map[string]int `json:"variant_counts"`
-	LastRequestTime *time.Time     `json:"last_request_time,omitempty"`
+	Name            string                  `json:"name"`
+	TotalRequests   int                     `json:"total_requests"`
+	VariantCounts   map[string]int          `json:"variant_counts"`
+	UniqueUsers     map[string]map[string]bool `json:"-"` // variant -> set of user IDs (not serialised)
+	VariantUsers    map[string]int          `json:"variant_users"` // variant -> unique user count
+	LastRequestTime *time.Time              `json:"last_request_time,omitempty"`
 }
 
 // NewABTestManager creates a new A/B test manager.
@@ -54,7 +56,7 @@ func (m *ABTestManager) SelectVariant(userID string, exp Experiment) *Variant {
 		// Return the previously assigned variant
 		for i, v := range exp.Variants {
 			if v.Name == existingVariant {
-				m.recordRequest(exp.Name, v.Name)
+				m.recordRequest(exp.Name, v.Name, userID)
 				return &exp.Variants[i]
 			}
 		}
@@ -71,7 +73,7 @@ func (m *ABTestManager) SelectVariant(userID string, exp Experiment) *Variant {
 	m.assignments[assignmentKey] = variant.Name
 	m.mu.Unlock()
 
-	m.recordRequest(exp.Name, variant.Name)
+	m.recordRequest(exp.Name, variant.Name, userID)
 	return variant
 }
 
@@ -101,6 +103,14 @@ func (m *ABTestManager) GetStats() map[string]*ExperimentStats {
 			vcCopy[vk] = vv
 		}
 		statCopy.VariantCounts = vcCopy
+
+		// Compute unique-user counts per variant
+		vuCopy := make(map[string]int, len(v.UniqueUsers))
+		for vk, users := range v.UniqueUsers {
+			vuCopy[vk] = len(users)
+		}
+		statCopy.VariantUsers = vuCopy
+
 		result[k] = &statCopy
 	}
 	return result
@@ -114,7 +124,7 @@ func (m *ABTestManager) ResetStats() {
 	m.stats = make(map[string]*ExperimentStats)
 }
 
-func (m *ABTestManager) recordRequest(experimentName, variantName string) {
+func (m *ABTestManager) recordRequest(experimentName, variantName, userID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -123,12 +133,23 @@ func (m *ABTestManager) recordRequest(experimentName, variantName string) {
 		stats = &ExperimentStats{
 			Name:          experimentName,
 			VariantCounts: make(map[string]int),
+			UniqueUsers:   make(map[string]map[string]bool),
 		}
 		m.stats[experimentName] = stats
 	}
 
 	stats.TotalRequests++
 	stats.VariantCounts[variantName]++
+
+	// Track unique users per variant
+	if stats.UniqueUsers == nil {
+		stats.UniqueUsers = make(map[string]map[string]bool)
+	}
+	if stats.UniqueUsers[variantName] == nil {
+		stats.UniqueUsers[variantName] = make(map[string]bool)
+	}
+	stats.UniqueUsers[variantName][userID] = true
+
 	now := time.Now()
 	stats.LastRequestTime = &now
 }
@@ -171,7 +192,7 @@ func selectVariantByHash(userID, experimentName string, variants []Variant) *Var
 // Tool Registry Client
 // =============================================================================
 
-// RegistryTool represents a tool fetched from an external tool registry API.
+// RegistryTool represents a tool in the dashboard-friendly format.
 type RegistryTool struct {
 	Name        string   `json:"name"`
 	Toolkit     string   `json:"toolkit"`
@@ -179,20 +200,117 @@ type RegistryTool struct {
 	Versions    []string `json:"versions"`
 }
 
-// RegistryResponse is the response format from the tool registry API.
+// RegistryResponse is the response format returned to the dashboard.
 type RegistryResponse struct {
 	Tools []RegistryTool `json:"tools"`
 	Total int            `json:"total"`
 }
 
-// FetchToolsFromRegistry queries an external tool registry API for available tools.
-// The registry URL and API key come from the config.
+// arcadeToolResponse represents a single tool from the Arcade engine API.
+type arcadeToolResponse struct {
+	Name               string                 `json:"name"`
+	Description        string                 `json:"description"`
+	FullyQualifiedName string                 `json:"fully_qualified_name"`
+	QualifiedName      string                 `json:"qualified_name"`
+	Toolkit            arcadeToolkitResponse  `json:"toolkit"`
+}
+
+// arcadeToolkitResponse represents toolkit info nested in a tool response.
+type arcadeToolkitResponse struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
+}
+
+// arcadeToolsPage is the paginated response from the Arcade engine's /v1/tools endpoint.
+type arcadeToolsPage struct {
+	Items      []arcadeToolResponse `json:"items"`
+	TotalCount int                  `json:"total_count"`
+	Limit      int                  `json:"limit"`
+	Offset     int                  `json:"offset"`
+	PageCount  int                  `json:"page_count"`
+}
+
+// FetchToolsFromRegistry queries the Arcade engine API for available tools.
+// It handles pagination and transforms the engine response into a simpler format
+// for the dashboard to display.
 func FetchToolsFromRegistry(cfg *ToolRegistryConfig) (*RegistryResponse, error) {
 	if cfg == nil || cfg.BaseURL == "" {
 		return nil, fmt.Errorf("tool registry not configured: base_url is required")
 	}
 
-	url := cfg.BaseURL + "/v1/tools"
+	client := &http.Client{Timeout: 15 * time.Second}
+	var allTools []arcadeToolResponse
+	offset := 0
+	limit := 100
+
+	for {
+		page, err := fetchToolsPage(client, cfg, limit, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		allTools = append(allTools, page.Items...)
+
+		// Stop when we've fetched everything or the page was empty.
+		if len(allTools) >= page.TotalCount || len(page.Items) == 0 {
+			break
+		}
+		offset += len(page.Items)
+	}
+
+	// Transform Arcade engine tools into RegistryTool format, grouping versions.
+	type toolKey struct {
+		toolkit  string
+		toolName string
+	}
+	toolMap := make(map[toolKey]*RegistryTool)
+	var toolOrder []toolKey // preserve insertion order
+
+	for _, t := range allTools {
+		key := toolKey{toolkit: t.Toolkit.Name, toolName: t.Name}
+		if rt, ok := toolMap[key]; ok {
+			// Add version if not already present.
+			if t.Toolkit.Version != "" {
+				found := false
+				for _, v := range rt.Versions {
+					if v == t.Toolkit.Version {
+						found = true
+						break
+					}
+				}
+				if !found {
+					rt.Versions = append(rt.Versions, t.Toolkit.Version)
+				}
+			}
+		} else {
+			rt := &RegistryTool{
+				Name:        t.Name,
+				Toolkit:     t.Toolkit.Name,
+				Description: t.Description,
+			}
+			if t.Toolkit.Version != "" {
+				rt.Versions = []string{t.Toolkit.Version}
+			}
+			toolMap[key] = rt
+			toolOrder = append(toolOrder, key)
+		}
+	}
+
+	tools := make([]RegistryTool, 0, len(toolOrder))
+	for _, key := range toolOrder {
+		tools = append(tools, *toolMap[key])
+	}
+
+	return &RegistryResponse{
+		Tools: tools,
+		Total: len(tools),
+	}, nil
+}
+
+// fetchToolsPage fetches a single page of tools from the Arcade engine API.
+func fetchToolsPage(client *http.Client, cfg *ToolRegistryConfig, limit, offset int) (*arcadeToolsPage, error) {
+	url := fmt.Sprintf("%s/v1/tools?limit=%d&offset=%d&include_all_versions=true", cfg.BaseURL, limit, offset)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -203,7 +321,6 @@ func FetchToolsFromRegistry(cfg *ToolRegistryConfig) (*RegistryResponse, error) 
 	}
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch tools: %w", err)
@@ -215,10 +332,10 @@ func FetchToolsFromRegistry(cfg *ToolRegistryConfig) (*RegistryResponse, error) 
 		return nil, fmt.Errorf("registry returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result RegistryResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode registry response: %w", err)
+	var page arcadeToolsPage
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &result, nil
+	return &page, nil
 }

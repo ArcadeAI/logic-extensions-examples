@@ -63,7 +63,7 @@ func (s *BlockingServer) AccessHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -97,7 +97,7 @@ func (s *BlockingServer) PreHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -134,7 +134,7 @@ func (s *BlockingServer) PostHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -162,7 +162,7 @@ func (s *BlockingServer) validateAuth(c *gin.Context) bool {
 	if auth != "Bearer "+s.token {
 		c.JSON(http.StatusUnauthorized, server.ErrorResponse{
 			Error: strPtr("invalid or missing bearer token"),
-			Code:  strPtr("UNAUTHORIZED"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return false
 	}
@@ -170,6 +170,8 @@ func (s *BlockingServer) validateAuth(c *gin.Context) bool {
 }
 
 func strPtr(s string) *string { return &s }
+
+func responseCodePtr(c server.ResponseCode) *server.ResponseCode { return &c }
 
 func main() {
 	var (

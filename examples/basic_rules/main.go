@@ -111,15 +111,6 @@ type PreRule struct {
 type PreOverrideConfig struct {
 	Inputs  map[string]interface{} `yaml:"inputs" json:"inputs"`
 	Secrets map[string]string      `yaml:"secrets" json:"secrets"`
-	Headers map[string]string      `yaml:"headers" json:"headers"`
-	Server  *ServerOverride        `yaml:"server" json:"server"`
-}
-
-// ServerOverride defines server routing override.
-type ServerOverride struct {
-	Name string `yaml:"name" json:"name"`
-	URI  string `yaml:"uri" json:"uri"`
-	Type string `yaml:"type" json:"type"` // arcade or mcp
 }
 
 // PostConfig controls post-execution hook behavior.
@@ -314,7 +305,7 @@ func (ts *TestServer) AccessHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -389,7 +380,7 @@ func (ts *TestServer) PreHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -455,19 +446,9 @@ func (ts *TestServer) applyPreRule(rule PreRule) *server.PreHookResult {
 		if len(rule.Override.Inputs) > 0 {
 			override.Inputs = &rule.Override.Inputs
 		}
-		if len(rule.Override.Headers) > 0 {
-			override.Headers = &rule.Override.Headers
-		}
 		if len(rule.Override.Secrets) > 0 {
 			secrets := []map[string]string{rule.Override.Secrets}
 			override.Secrets = &secrets
-		}
-		if rule.Override.Server != nil {
-			override.Server = &server.ServerInfo{
-				Name: rule.Override.Server.Name,
-				Uri:  rule.Override.Server.URI,
-				Type: server.ServerInfoType(rule.Override.Server.Type),
-			}
 		}
 
 		result.Override = override
@@ -486,7 +467,7 @@ func (ts *TestServer) PostHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -533,8 +514,12 @@ func (ts *TestServer) matchPostRule(rule PostRule, userID string, req server.Pos
 	if rule.Success != nil && req.Success != nil && *rule.Success != *req.Success {
 		return false
 	}
-	if rule.OutputMatch != "" && !ts.matchesOutput(rule.OutputMatch, req.Output) {
-		return false
+	if rule.OutputMatch != "" {
+		if outputMap, ok := req.Output.(map[string]interface{}); ok {
+			if !ts.matchesOutput(rule.OutputMatch, outputMap) {
+				return false
+			}
+		}
 	}
 	return true
 }
@@ -550,8 +535,9 @@ func (ts *TestServer) applyPostRule(rule PostRule) *server.PostHookResult {
 
 	if rule.Override != nil && rule.Action == "proceed" {
 		if len(rule.Override.Output) > 0 {
+			output := map[string]interface{}(rule.Override.Output)
 			result.Override = &server.PostHookOverride{
-				Output: &rule.Override.Output,
+				Output: output,
 			}
 		}
 	}
@@ -573,7 +559,7 @@ func (ts *TestServer) validateAuth(c *gin.Context) bool {
 	if auth != expected {
 		c.JSON(http.StatusUnauthorized, server.ErrorResponse{
 			Error: strPtr("invalid or missing bearer token"),
-			Code:  strPtr("UNAUTHORIZED"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return false
 	}
@@ -652,6 +638,10 @@ func (ts *TestServer) actionToCode(action string) server.ResponseCode {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func responseCodePtr(c server.ResponseCode) *server.ResponseCode {
+	return &c
 }
 
 // =============================================================================

@@ -25,12 +25,6 @@ const (
 	RATELIMITEXCEEDED ResponseCode = "RATE_LIMIT_EXCEEDED"
 )
 
-// Defines values for ServerInfoType.
-const (
-	Arcade ServerInfoType = "arcade"
-	Mcp    ServerInfoType = "mcp"
-)
-
 // AccessHookRequest Access-hook request from engine to hook server
 type AccessHookRequest struct {
 	// Toolkits Map of a group of tools
@@ -60,8 +54,8 @@ type Authorization struct {
 
 // ErrorResponse Error response from webhook server
 type ErrorResponse struct {
-	// Code Machine-readable error code for programmatic handling
-	Code *string `json:"code,omitempty"`
+	// Code Response code from hook server
+	Code *ResponseCode `json:"code,omitempty"`
 
 	// Error Human-readable error message
 	Error *string `json:"error,omitempty"`
@@ -90,8 +84,8 @@ type OAuth2Details struct {
 
 // PostHookOverride Override response parameters
 type PostHookOverride struct {
-	// Output Override the response returned
-	Output *map[string]interface{} `json:"output,omitempty"`
+	// Output Override the output value (any JSON type — string, number, object, array, etc.)
+	Output interface{} `json:"output,omitempty"`
 }
 
 // PostHookRequest Post-hook request from engine to hook server
@@ -111,11 +105,8 @@ type PostHookRequest struct {
 	// Inputs Tool inputs (name -> value)
 	Inputs *map[string]interface{} `json:"inputs,omitempty"`
 
-	// Output The execution output
-	Output map[string]interface{} `json:"output"`
-
-	// Server Server routing information
-	Server ServerInfo `json:"server"`
+	// Output The tool's output value (any JSON type — string, number, object, array, etc.)
+	Output interface{} `json:"output,omitempty"`
 
 	// Success Whether the tool succeeded
 	Success *bool `json:"success,omitempty"`
@@ -138,17 +129,11 @@ type PostHookResult struct {
 
 // PreHookOverride Override execution parameters
 type PreHookOverride struct {
-	// Headers Override request headers
-	Headers *map[string]string `json:"headers,omitempty"`
-
 	// Inputs Override tool inputs
 	Inputs *map[string]interface{} `json:"inputs,omitempty"`
 
 	// Secrets Override secrets
 	Secrets *[]map[string]string `json:"secrets,omitempty"`
-
-	// Server Server routing information
-	Server *ServerInfo `json:"server,omitempty"`
 }
 
 // PreHookRequest Pre-hook request from engine to hook server
@@ -186,21 +171,6 @@ type SecretRequirement struct {
 	// Name Secret name
 	Name string `json:"name"`
 }
-
-// ServerInfo Server routing information
-type ServerInfo struct {
-	// Name Server name
-	Name string `json:"name"`
-
-	// Type Server type
-	Type ServerInfoType `json:"type"`
-
-	// Uri Server URI
-	Uri string `json:"uri"`
-}
-
-// ServerInfoType Server type
-type ServerInfoType string
 
 // ToolAuthRequirements Authorization requirements for a tool
 type ToolAuthRequirements struct {
@@ -264,9 +234,6 @@ type ToolkitRequirements struct {
 
 	// Secrets Required secrets
 	Secrets *[]SecretRequirement `json:"secrets,omitempty"`
-
-	// Server Server routing information
-	Server *ServerInfo `json:"server,omitempty"`
 }
 
 // Toolkits Map of a group of tools
@@ -308,7 +275,6 @@ type MiddlewareFunc func(c *gin.Context)
 
 // AccessHook operation middleware
 func (siw *ServerInterfaceWrapper) AccessHook(c *gin.Context) {
-
 	c.Set(BearerAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -323,7 +289,6 @@ func (siw *ServerInterfaceWrapper) AccessHook(c *gin.Context) {
 
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
-
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -336,7 +301,6 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 
 // PostHook operation middleware
 func (siw *ServerInterfaceWrapper) PostHook(c *gin.Context) {
-
 	c.Set(BearerAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -351,7 +315,6 @@ func (siw *ServerInterfaceWrapper) PostHook(c *gin.Context) {
 
 // PreHook operation middleware
 func (siw *ServerInterfaceWrapper) PreHook(c *gin.Context) {
-
 	c.Set(BearerAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {

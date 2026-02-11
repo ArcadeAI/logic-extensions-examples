@@ -179,14 +179,20 @@ type PIIMatch struct {
 
 // PIIScanResult is the result of scanning content for PII.
 type PIIScanResult struct {
-	ContainsPII bool       `json:"contains_pii"`
-	Matches     []PIIMatch `json:"matches"`
+	ContainsPII bool           `json:"contains_pii"`
+	Matches     []PIIMatch     `json:"matches"`
 	TypeCounts  map[string]int `json:"type_counts"`
 }
 
 // ScanAndSummarize scans a map for PII and returns a summary.
 func (d *PIIDetector) ScanAndSummarize(data map[string]interface{}) PIIScanResult {
-	matches := d.ScanMap(data)
+	return d.ScanAndSummarizeAny(data)
+}
+
+// ScanAndSummarizeAny scans any value (string, map, slice, etc.) for PII and returns a summary.
+func (d *PIIDetector) ScanAndSummarizeAny(data interface{}) PIIScanResult {
+	var matches []PIIMatch
+	d.scanValue(data, "", &matches)
 	counts := make(map[string]int)
 	for _, m := range matches {
 		counts[m.Type]++
@@ -196,4 +202,9 @@ func (d *PIIDetector) ScanAndSummarize(data map[string]interface{}) PIIScanResul
 		Matches:     matches,
 		TypeCounts:  counts,
 	}
+}
+
+// RedactAny recursively redacts PII from any value (string, map, slice, etc.).
+func (d *PIIDetector) RedactAny(data interface{}) interface{} {
+	return d.redactValue(data)
 }

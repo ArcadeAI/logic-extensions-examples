@@ -64,15 +64,6 @@ type PreRule struct {
 type PreOverrideConfig struct {
 	Inputs  map[string]interface{} `yaml:"inputs" json:"inputs"`
 	Secrets map[string]string      `yaml:"secrets" json:"secrets"`
-	Headers map[string]string      `yaml:"headers" json:"headers"`
-	Server  *ServerOverride        `yaml:"server" json:"server"`
-}
-
-// ServerOverride defines server routing override.
-type ServerOverride struct {
-	Name string `yaml:"name" json:"name"`
-	URI  string `yaml:"uri" json:"uri"`
-	Type string `yaml:"type" json:"type"` // arcade or mcp
 }
 
 // PostConfig controls post-execution hook behavior.
@@ -149,10 +140,9 @@ type Experiment struct {
 
 // Variant defines a single variant in an experiment.
 type Variant struct {
-	Name    string          `yaml:"name" json:"name"`
-	Weight  int             `yaml:"weight" json:"weight"` // 0-100, relative weight
-	Version string          `yaml:"version" json:"version"`
-	Server  *ServerOverride `yaml:"server" json:"server"`
+	Name    string `yaml:"name" json:"name"`
+	Weight  int    `yaml:"weight" json:"weight"` // 0-100, relative weight
+	Version string `yaml:"version" json:"version"`
 }
 
 // =============================================================================
@@ -262,7 +252,7 @@ func (cm *ConfigManager) Save() error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(cm.configPath, data, 0644); err != nil {
+	if err := os.WriteFile(cm.configPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

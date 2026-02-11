@@ -117,7 +117,7 @@ func (s *RedactorServer) AccessHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -134,7 +134,7 @@ func (s *RedactorServer) PreHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -153,13 +153,13 @@ func (s *RedactorServer) PostHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
 
 	// Scan all output values for PII
-	piiFound := s.scanMap(req.Output)
+	piiFound := s.scanValue(req.Output)
 	if len(piiFound) == 0 {
 		// No PII detected - pass through
 		c.JSON(http.StatusOK, server.PostHookResult{Code: server.OK})
@@ -185,11 +185,11 @@ func (s *RedactorServer) PostHook(c *gin.Context) {
 	}
 
 	// Redact PII in the output
-	redacted := s.redactMap(req.Output)
+	redacted := s.redactValue(req.Output)
 	log.Printf("[POST] Redacted %d PII item(s) in output", len(piiFound))
 	c.JSON(http.StatusOK, server.PostHookResult{
 		Code:     server.OK,
-		Override: &server.PostHookOverride{Output: &redacted},
+		Override: &server.PostHookOverride{Output: redacted},
 	})
 }
 
@@ -273,7 +273,7 @@ func (s *RedactorServer) validateAuth(c *gin.Context) bool {
 	if auth != "Bearer "+s.token {
 		c.JSON(http.StatusUnauthorized, server.ErrorResponse{
 			Error: strPtr("invalid or missing bearer token"),
-			Code:  strPtr("UNAUTHORIZED"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return false
 	}
@@ -293,6 +293,8 @@ func summarizeTypes(matches []piiMatch) string {
 }
 
 func strPtr(s string) *string { return &s }
+
+func responseCodePtr(c server.ResponseCode) *server.ResponseCode { return &c }
 
 // =============================================================================
 // Main

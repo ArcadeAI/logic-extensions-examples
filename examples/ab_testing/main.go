@@ -60,10 +60,6 @@ type Variant struct {
 	Name    string `yaml:"name" json:"name"`
 	Weight  int    `yaml:"weight" json:"weight"` // relative weight (0-100)
 	Version string `yaml:"version" json:"version"`
-	// Optional: route to a different server
-	ServerName string `yaml:"server_name" json:"server_name"`
-	ServerURI  string `yaml:"server_uri" json:"server_uri"`
-	ServerType string `yaml:"server_type" json:"server_type"` // "arcade" or "mcp"
 }
 
 // =============================================================================
@@ -75,7 +71,7 @@ type ABServer struct {
 	mu          sync.RWMutex
 	config      *Config
 	token       string
-	assignments map[string]string          // "user:experiment" -> variant name
+	assignments map[string]string           // "user:experiment" -> variant name
 	stats       map[string]*ExperimentStats // experiment name -> stats
 }
 
@@ -109,7 +105,7 @@ func (s *ABServer) AccessHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -128,7 +124,7 @@ func (s *ABServer) PreHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -158,20 +154,9 @@ func (s *ABServer) PreHook(c *gin.Context) {
 
 	result := &server.PreHookResult{Code: server.OK}
 
-	// If variant specifies a different server, override routing
-	if variant.ServerURI != "" {
-		srvType := server.ServerInfoType(variant.ServerType)
-		if srvType == "" {
-			srvType = server.Arcade
-		}
-		result.Override = &server.PreHookOverride{
-			Server: &server.ServerInfo{
-				Name: variant.ServerName,
-				Uri:  variant.ServerURI,
-				Type: srvType,
-			},
-		}
-	}
+	// A/B variant selected - pass through with OK
+	// (server routing overrides were removed from the schema;
+	//  version filtering is handled at the access hook level)
 
 	c.JSON(http.StatusOK, result)
 }
@@ -185,7 +170,7 @@ func (s *ABServer) PostHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -328,7 +313,7 @@ func (s *ABServer) validateAuth(c *gin.Context) bool {
 	if auth != "Bearer "+s.token {
 		c.JSON(http.StatusUnauthorized, server.ErrorResponse{
 			Error: strPtr("invalid or missing bearer token"),
-			Code:  strPtr("UNAUTHORIZED"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return false
 	}
@@ -351,6 +336,8 @@ func matchGlob(pattern, value string) bool {
 }
 
 func strPtr(s string) *string { return &s }
+
+func responseCodePtr(c server.ResponseCode) *server.ResponseCode { return &c }
 
 // =============================================================================
 // Main

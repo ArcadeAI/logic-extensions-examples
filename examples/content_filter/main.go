@@ -105,7 +105,7 @@ func (s *FilterServer) AccessHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -139,13 +139,13 @@ func (s *FilterServer) PreHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
 
 	// Serialize all inputs to a single string for keyword/pattern checking
-	inputStr := flattenMap(req.Inputs)
+	inputStr := flattenValue(req.Inputs)
 
 	// Check blocked keywords in inputs
 	for _, keyword := range s.config.BlockedKeywords {
@@ -191,12 +191,12 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
 
-	outputStr := flattenMap(req.Output)
+	outputStr := flattenValue(req.Output)
 
 	// Check blocked keywords in output
 	for _, keyword := range s.config.BlockedKeywords {
@@ -213,7 +213,7 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 
 	// Check regex patterns against output - support block and replace actions
 	modified := false
-	result := copyMap(req.Output)
+	result := copyValue(req.Output)
 	for _, cp := range s.compiledOutputs {
 		if cp.pattern.MatchString(outputStr) {
 			if cp.rule.Action == "block" {
@@ -230,7 +230,7 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 			}
 			if cp.rule.Action == "replace" {
 				// Replace matching content in all string values
-				result = replaceInMap(result, cp.pattern, cp.rule.Replacement)
+				result = replaceInValue(result, cp.pattern, cp.rule.Replacement)
 				modified = true
 				log.Printf("[POST] Replaced content matching pattern %q", cp.rule.Name)
 			}
@@ -240,7 +240,7 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 	if modified {
 		c.JSON(http.StatusOK, server.PostHookResult{
 			Code:     server.OK,
-			Override: &server.PostHookOverride{Output: &result},
+			Override: &server.PostHookOverride{Output: result},
 		})
 		return
 	}
@@ -260,45 +260,75 @@ func (s *FilterServer) validateAuth(c *gin.Context) bool {
 	if auth != "Bearer "+s.token {
 		c.JSON(http.StatusUnauthorized, server.ErrorResponse{
 			Error: strPtr("invalid or missing bearer token"),
-			Code:  strPtr("UNAUTHORIZED"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return false
 	}
 	return true
 }
 
-// flattenMap converts a map to a single string for content searching.
-func flattenMap(m map[string]interface{}) string {
-	var parts []string
-	for _, v := range m {
-		parts = append(parts, fmt.Sprintf("%v", v))
-	}
-	return strings.Join(parts, " ")
-}
-
-// copyMap creates a shallow copy of a map.
-func copyMap(m map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		result[k] = v
-	}
-	return result
-}
-
-// replaceInMap replaces regex matches in all string values of a map.
-func replaceInMap(m map[string]interface{}, pattern *regexp.Regexp, replacement string) map[string]interface{} {
-	result := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		switch val := v.(type) {
-		case string:
-			result[k] = pattern.ReplaceAllString(val, replacement)
-		case map[string]interface{}:
-			result[k] = replaceInMap(val, pattern, replacement)
-		default:
-			result[k] = v
+// flattenValue converts any value to a single string for content searching.
+func flattenValue(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case map[string]interface{}:
+		var parts []string
+		for _, item := range val {
+			parts = append(parts, flattenValue(item))
 		}
+		return strings.Join(parts, " ")
+	case []interface{}:
+		var parts []string
+		for _, item := range val {
+			parts = append(parts, flattenValue(item))
+		}
+		return strings.Join(parts, " ")
+	default:
+		return fmt.Sprintf("%v", v)
 	}
-	return result
+}
+
+// copyValue creates a deep copy of any value.
+func copyValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{}, len(val))
+		for k, item := range val {
+			result[k] = copyValue(item)
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(val))
+		for i, item := range val {
+			result[i] = copyValue(item)
+		}
+		return result
+	default:
+		return v
+	}
+}
+
+// replaceInValue replaces regex matches in all string values recursively.
+func replaceInValue(v interface{}, pattern *regexp.Regexp, replacement string) interface{} {
+	switch val := v.(type) {
+	case string:
+		return pattern.ReplaceAllString(val, replacement)
+	case map[string]interface{}:
+		result := make(map[string]interface{}, len(val))
+		for k, item := range val {
+			result[k] = replaceInValue(item, pattern, replacement)
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(val))
+		for i, item := range val {
+			result[i] = replaceInValue(item, pattern, replacement)
+		}
+		return result
+	default:
+		return v
+	}
 }
 
 // matchGlob matches a glob pattern against a value.
@@ -319,6 +349,8 @@ func matchGlob(pattern, value string) bool {
 
 func strPtr(s string) *string { return &s }
 
+func responseCodePtr(c server.ResponseCode) *server.ResponseCode { return &c }
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -337,10 +369,10 @@ func main() {
 
 	cfg := &Config{
 		// Default example: block some keywords
-		BlockedKeywords: []string{},
-		BlockedInputPatterns: []PatternRule{},
+		BlockedKeywords:       []string{},
+		BlockedInputPatterns:  []PatternRule{},
 		BlockedOutputPatterns: []PatternRule{},
-		BlockedToolkits: []string{},
+		BlockedToolkits:       []string{},
 	}
 
 	if configFile != "" {

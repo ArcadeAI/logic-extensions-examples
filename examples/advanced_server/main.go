@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -186,13 +187,13 @@ func (s *HookServer) AccessHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
 
-	resp, ruleMatch := s.evaluateAccessRules(req)
-	s.logRequest("/access", req, resp, ruleMatch)
+	resp, ruleMatch, abVariant := s.evaluateAccessRules(req)
+	s.logRequestFull("/access", req, resp, ruleMatch, false, abVariant)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -206,7 +207,7 @@ func (s *HookServer) PreHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -226,7 +227,7 @@ func (s *HookServer) PostHook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, server.ErrorResponse{
 			Error: strPtr("invalid request body: " + err.Error()),
-			Code:  strPtr("INVALID_REQUEST"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return
 	}
@@ -237,16 +238,17 @@ func (s *HookServer) PostHook(c *gin.Context) {
 }
 
 // =============================================================================
-// Access Hook Evaluation
+// Access Hook Evaluation (with A/B version filtering)
 // =============================================================================
 
-func (s *HookServer) evaluateAccessRules(req server.AccessHookRequest) (*server.AccessHookResult, string) {
+func (s *HookServer) evaluateAccessRules(req server.AccessHookRequest) (*server.AccessHookResult, string, string) {
 	cfg := s.cfgMgr.Get()
 	accessCfg := cfg.Access
 
 	allow := make(server.Toolkits)
 	deny := make(server.Toolkits)
 	ruleMatch := ""
+	abVariant := ""
 
 	for toolkitName, toolkitInfo := range req.Toolkits {
 		if toolkitInfo.Tools == nil {
@@ -264,10 +266,16 @@ func (s *HookServer) evaluateAccessRules(req server.AccessHookRequest) (*server.
 				}
 				(*deny[toolkitName].Tools)[toolName] = versions
 			} else {
+				// Apply A/B version filtering for allowed tools
+				filteredVersions, variantName := s.applyABVersionFilter(cfg, req.UserId, toolkitName, toolName, versions)
+				if variantName != "" {
+					abVariant = variantName
+				}
+
 				if _, ok := allow[toolkitName]; !ok {
 					allow[toolkitName] = server.ToolkitInfo{Tools: &map[string][]server.ToolVersionInfo{}}
 				}
-				(*allow[toolkitName].Tools)[toolName] = versions
+				(*allow[toolkitName].Tools)[toolName] = filteredVersions
 			}
 		}
 	}
@@ -280,7 +288,40 @@ func (s *HookServer) evaluateAccessRules(req server.AccessHookRequest) (*server.
 		result.Deny = &deny
 	}
 
-	return result, ruleMatch
+	return result, ruleMatch, abVariant
+}
+
+// applyABVersionFilter checks if an A/B experiment applies to this tool and
+// filters the available versions based on the selected variant.
+func (s *HookServer) applyABVersionFilter(cfg *Config, userID, toolkit, tool string, versions []server.ToolVersionInfo) ([]server.ToolVersionInfo, string) {
+	if cfg.ABTesting == nil || !cfg.ABTesting.Enabled || userID == "" {
+		return versions, ""
+	}
+
+	exp := s.abMgr.FindExperiment(toolkit, tool, cfg.ABTesting.Experiments)
+	if exp == nil {
+		return versions, ""
+	}
+
+	variant := s.abMgr.SelectVariant(userID, *exp)
+	if variant == nil || variant.Version == "" {
+		return versions, ""
+	}
+
+	// Filter to only include the variant's version
+	var filtered []server.ToolVersionInfo
+	for _, v := range versions {
+		if v.Version != nil && *v.Version == variant.Version {
+			filtered = append(filtered, v)
+		}
+	}
+
+	// If no matching version found, pass through all versions rather than breaking
+	if len(filtered) == 0 {
+		return versions, variant.Name
+	}
+
+	return filtered, variant.Name
 }
 
 func (s *HookServer) matchAccessRule(cfg *AccessConfig, userID, toolkit, tool string) (string, string) {
@@ -295,7 +336,7 @@ func (s *HookServer) matchAccessRule(cfg *AccessConfig, userID, toolkit, tool st
 }
 
 // =============================================================================
-// Pre-Hook Evaluation (with A/B testing)
+// Pre-Hook Evaluation (A/B server routing only; version filtering is in access hook)
 // =============================================================================
 
 func (s *HookServer) evaluatePreRules(req server.PreHookRequest) (*server.PreHookResult, string, string) {
@@ -315,7 +356,7 @@ func (s *HookServer) evaluatePreRules(req server.PreHookRequest) (*server.PreHoo
 		}
 	}
 
-	// Check A/B testing - if enabled, may modify the request
+	// Check A/B testing - server routing only (version filtering is handled by access hook)
 	abVariant := ""
 	if cfg.ABTesting != nil && cfg.ABTesting.Enabled && userID != "" {
 		exp := s.abMgr.FindExperiment(req.Tool.Toolkit, req.Tool.Name, cfg.ABTesting.Experiments)
@@ -323,24 +364,11 @@ func (s *HookServer) evaluatePreRules(req server.PreHookRequest) (*server.PreHoo
 			variant := s.abMgr.SelectVariant(userID, *exp)
 			if variant != nil {
 				abVariant = variant.Name
-				result := &server.PreHookResult{Code: server.OK}
-				override := &server.PreHookOverride{}
-				hasOverride := false
 
-				// Route to variant's server if specified
-				if variant.Server != nil {
-					override.Server = &server.ServerInfo{
-						Name: variant.Server.Name,
-						Uri:  variant.Server.URI,
-						Type: server.ServerInfoType(variant.Server.Type),
-					}
-					hasOverride = true
-				}
-
-				if hasOverride {
-					result.Override = override
-				}
-				return result, fmt.Sprintf("ab:%s->%s", exp.Name, variant.Name), abVariant
+				// A/B testing matched - return OK with variant info
+				// (server routing overrides were removed from the schema;
+				//  version filtering is done at the access hook level)
+				return &server.PreHookResult{Code: server.OK}, fmt.Sprintf("ab:%s->%s", exp.Name, variant.Name), abVariant
 			}
 		}
 	}
@@ -384,19 +412,9 @@ func (s *HookServer) applyPreRule(rule PreRule) *server.PreHookResult {
 		if len(rule.Override.Inputs) > 0 {
 			override.Inputs = &rule.Override.Inputs
 		}
-		if len(rule.Override.Headers) > 0 {
-			override.Headers = &rule.Override.Headers
-		}
 		if len(rule.Override.Secrets) > 0 {
 			secrets := []map[string]string{rule.Override.Secrets}
 			override.Secrets = &secrets
-		}
-		if rule.Override.Server != nil {
-			override.Server = &server.ServerInfo{
-				Name: rule.Override.Server.Name,
-				Uri:  rule.Override.Server.URI,
-				Type: server.ServerInfoType(rule.Override.Server.Type),
-			}
 		}
 		result.Override = override
 	}
@@ -417,47 +435,87 @@ func (s *HookServer) evaluatePostRules(req server.PostHookRequest) (*server.Post
 		userID = *req.Context.UserId
 	}
 
-	// First evaluate basic rules
+	// Evaluate basic rules first to get the base result
+	var result *server.PostHookResult
+	ruleMatch := ""
 	for i, rule := range postCfg.Rules {
 		if s.matchPostRule(rule, userID, req) {
-			result := s.applyPostRule(rule)
-			return result, fmt.Sprintf("post.rules[%d]", i), false
+			result = s.applyPostRule(rule)
+			ruleMatch = fmt.Sprintf("post.rules[%d]", i)
+			break
 		}
 	}
 
-	// Apply PII redaction if enabled
+	// If no rule matched, use default action
+	if result == nil {
+		result = &server.PostHookResult{
+			Code: actionToCode(postCfg.DefaultAction),
+		}
+	}
+
+	// Always apply PII redaction on top of whatever result we have.
+	// PII is a security/compliance feature and should never be bypassed by rules.
+	// Scan both inputs and output for PII — inputs may contain sensitive data
+	// that the tool could echo back, and output may not always be populated.
 	piiFound := false
-	if cfg.PII != nil && cfg.PII.Enabled && req.Output != nil {
-		detector := NewPIIDetector(cfg.PII)
-		scanResult := detector.ScanAndSummarize(req.Output)
+	if cfg.PII != nil && cfg.PII.Enabled {
+		hasContent := req.Output != nil || (req.Inputs != nil && len(*req.Inputs) > 0)
+		if hasContent {
+			detector := NewPIIDetector(cfg.PII)
 
-		if scanResult.ContainsPII {
-			piiFound = true
-
-			if cfg.PII.Action == "block" {
-				// Block the response entirely
-				errMsg := "Response blocked: PII detected in output"
-				return &server.PostHookResult{
-					Code:         server.CHECKFAILED,
-					ErrorMessage: &errMsg,
-				}, "pii:block", true
+			// Scan both output and inputs for PII
+			var outputScan, inputScan PIIScanResult
+			if req.Output != nil {
+				outputScan = detector.ScanAndSummarizeAny(req.Output)
+			}
+			if req.Inputs != nil {
+				inputScan = detector.ScanAndSummarizeAny(*req.Inputs)
 			}
 
-			// Redact PII from output
-			redacted := detector.RedactMap(req.Output)
-			return &server.PostHookResult{
-				Code: server.OK,
-				Override: &server.PostHookOverride{
-					Output: &redacted,
-				},
-			}, "pii:redact", true
+			if outputScan.ContainsPII || inputScan.ContainsPII {
+				piiFound = true
+
+				if cfg.PII.Action == "block" {
+					// Block the response entirely, regardless of rule result
+					errMsg := "Response blocked: PII detected"
+					if outputScan.ContainsPII && inputScan.ContainsPII {
+						errMsg = "Response blocked: PII detected in inputs and output"
+					} else if inputScan.ContainsPII {
+						errMsg = "Response blocked: PII detected in inputs"
+					} else {
+						errMsg = "Response blocked: PII detected in output"
+					}
+					return &server.PostHookResult{
+						Code:         server.CHECKFAILED,
+						ErrorMessage: &errMsg,
+					}, joinRuleMatch(ruleMatch, "pii:block"), true
+				}
+
+				// Redact PII from output (or from inputs if output is nil)
+				var outputToRedact interface{} = req.Output
+				if result.Override != nil && result.Override.Output != nil {
+					outputToRedact = result.Override.Output
+				}
+				// If output is nil but inputs have PII, redact the inputs and
+				// return them as the output override so the caller sees redacted data.
+				if outputToRedact == nil && req.Inputs != nil {
+					m := map[string]interface{}(*req.Inputs)
+					outputToRedact = m
+				}
+
+				if outputToRedact != nil {
+					redacted := detector.RedactAny(outputToRedact)
+					if result.Override == nil {
+						result.Override = &server.PostHookOverride{}
+					}
+					result.Override.Output = redacted
+				}
+				return result, joinRuleMatch(ruleMatch, "pii:redact"), true
+			}
 		}
 	}
 
-	// Default action
-	return &server.PostHookResult{
-		Code: actionToCode(postCfg.DefaultAction),
-	}, "", piiFound
+	return result, ruleMatch, piiFound
 }
 
 func (s *HookServer) matchPostRule(rule PostRule, userID string, req server.PostHookRequest) bool {
@@ -476,8 +534,12 @@ func (s *HookServer) matchPostRule(rule PostRule, userID string, req server.Post
 	if rule.Success != nil && req.Success != nil && *rule.Success != *req.Success {
 		return false
 	}
-	if rule.OutputMatch != "" && !matchesInputs(rule.OutputMatch, req.Output) {
-		return false
+	if rule.OutputMatch != "" {
+		if outputMap, ok := req.Output.(map[string]interface{}); ok {
+			if !matchesInputs(rule.OutputMatch, outputMap) {
+				return false
+			}
+		}
 	}
 	return true
 }
@@ -493,8 +555,9 @@ func (s *HookServer) applyPostRule(rule PostRule) *server.PostHookResult {
 
 	if rule.Override != nil && rule.Action == "proceed" {
 		if len(rule.Override.Output) > 0 {
+			output := map[string]interface{}(rule.Override.Output)
 			result.Override = &server.PostHookOverride{
-				Output: &rule.Override.Output,
+				Output: output,
 			}
 		}
 	}
@@ -605,9 +668,9 @@ func (s *HookServer) handleTestPII(c *gin.Context) {
 	redacted := detector.RedactString(body.Text)
 
 	c.JSON(http.StatusOK, gin.H{
-		"original":  body.Text,
-		"redacted":  redacted,
-		"scan":      result,
+		"original": body.Text,
+		"redacted": redacted,
+		"scan":     result,
 	})
 }
 
@@ -625,7 +688,7 @@ func (s *HookServer) validateAuth(c *gin.Context) bool {
 	if auth != expected {
 		c.JSON(http.StatusUnauthorized, server.ErrorResponse{
 			Error: strPtr("invalid or missing bearer token"),
-			Code:  strPtr("UNAUTHORIZED"),
+			Code:  responseCodePtr(server.CHECKFAILED),
 		})
 		return false
 	}
@@ -707,11 +770,23 @@ func strPtr(s string) *string {
 	return &s
 }
 
+func responseCodePtr(c server.ResponseCode) *server.ResponseCode {
+	return &c
+}
+
+// joinRuleMatch combines a rule match string with a PII match string.
+func joinRuleMatch(ruleMatch, piiMatch string) string {
+	if ruleMatch == "" {
+		return piiMatch
+	}
+	return ruleMatch + "+" + piiMatch
+}
+
 // =============================================================================
 // Config File Watching
 // =============================================================================
 
-func watchConfigFile(path string, cfgMgr *ConfigManager) {
+func watchConfigFile(path string, cfgMgr *ConfigManager, done <-chan struct{}) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Printf("Failed to create file watcher: %v", err)
@@ -723,9 +798,6 @@ func watchConfigFile(path string, cfgMgr *ConfigManager) {
 		log.Printf("Failed to watch config file: %v", err)
 		return
 	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	for {
 		select {
@@ -746,7 +818,7 @@ func watchConfigFile(path string, cfgMgr *ConfigManager) {
 				return
 			}
 			log.Printf("Watcher error: %v", err)
-		case <-sigChan:
+		case <-done:
 			return
 		}
 	}
@@ -896,8 +968,9 @@ func main() {
 		}
 	}
 
-	// Watch config file for changes
-	go watchConfigFile(configPath, cfgMgr)
+	// Watch config file for changes (stops when done channel is closed)
+	done := make(chan struct{})
+	go watchConfigFile(configPath, cfgMgr, done)
 
 	srv := NewHookServer(serverCfg, cfgMgr)
 
@@ -936,25 +1009,49 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", serverCfg.Port)
 
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: router,
+	}
+
 	if serverCfg.TLSEnabled {
 		tlsConfig, err := buildTLSConfig(serverCfg)
 		if err != nil {
 			log.Fatal("Failed to configure TLS:", err)
 		}
+		httpServer.TLSConfig = tlsConfig
+	}
 
-		httpServer := &http.Server{
-			Addr:      addr,
-			Handler:   router,
-			TLSConfig: tlsConfig,
+	// Start server in background
+	go func() {
+		var err error
+		if serverCfg.TLSEnabled {
+			err = httpServer.ListenAndServeTLS(serverCfg.CertFile, serverCfg.KeyFile)
+		} else {
+			err = httpServer.ListenAndServe()
 		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal("Server error:", err)
+		}
+	}()
 
-		if err := httpServer.ListenAndServeTLS(serverCfg.CertFile, serverCfg.KeyFile); err != nil {
-			log.Fatal("Failed to start TLS server:", err)
-		}
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("Received %s, shutting down gracefully...", sig)
+
+	// Stop the config file watcher
+	close(done)
+
+	// Give active requests up to 5 seconds to finish
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("Forced shutdown: %v", err)
 	} else {
-		if err := router.Run(addr); err != nil {
-			log.Fatal("Failed to start server:", err)
-		}
+		log.Println("Server stopped cleanly")
 	}
 }
 
@@ -969,5 +1066,5 @@ func ensureConfigFile(path string, cfg *Config) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o644)
 }

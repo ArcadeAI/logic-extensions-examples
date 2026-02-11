@@ -1,0 +1,42 @@
+health:
+    status: healthy
+access:
+    default_action: allow
+    rules: []
+pre:
+    default_action: proceed
+    rules: []
+post:
+    default_action: proceed
+    rules: []
+pii:
+    enabled: true
+    action: redact
+    types:
+        email: true
+        ipv4: true
+        ssn: true
+        phone: true
+        credit_card: true
+        date_of_birth: true
+    custom: []
+ab_testing:
+    enabled: true
+    tool_registry:
+        base_url: http://localhost:9099
+        api_key: arc_o1EsEp4AR6cYUhfaeq3FRcRh6xW257au78C4uWWH2iWMXH2Mh2jR
+    experiments:
+        - name: Echo Test
+          enabled: true
+          toolkit: EchoServer
+          tool: '*'
+          mode: ab
+          variants:
+            - name: control
+              weight: 50
+              version: 0.1.0
+              server: null
+            - name: treatment
+              weight: 50
+              version: 0.2.0
+              server: null
