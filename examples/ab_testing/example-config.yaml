@@ -1,0 +1,42 @@
+# A/B Testing Configuration
+#
+# Defines experiments for routing tool calls to different versions/servers.
+
+# Optional: external tool registry for discovering available tools
+registry_url: ""
+registry_key: ""
+
+experiments:
+  # Canary deployment: route 10% of traffic to a new search tool version
+  - name: "search-v2-canary"
+    enabled: true
+    toolkit: "Search"
+    tool: "WebSearch"
+    mode: canary
+    variants:
+      - name: "stable"
+        weight: 90
+        version: "1.0.0"
+      - name: "canary"
+        weight: 10
+        version: "2.0.0"
+        server_name: "search-v2"
+        server_uri: "http://search-v2.internal:8080"
+        server_type: "arcade"
+
+  # 50/50 A/B test comparing two email tool implementations
+  - name: "email-provider-compare"
+    enabled: true
+    toolkit: "Email"
+    tool: "*"
+    mode: ab
+    variants:
+      - name: "provider-a"
+        weight: 50
+        version: "1.0.0"
+      - name: "provider-b"
+        weight: 50
+        version: "1.0.0"
+        server_name: "email-alt"
+        server_uri: "http://email-alt.internal:8080"
+        server_type: "arcade"
