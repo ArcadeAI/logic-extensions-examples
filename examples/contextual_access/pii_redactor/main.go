@@ -56,7 +56,7 @@ func AllPIIPatterns() map[string]PIIPattern {
 		},
 		"phone": {
 			Name:        "phone",
-			Regex:       regexp.MustCompile(`\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			Regex:       regexp.MustCompile(`(?:\+?\b1[-.\s]?\(?|\(|\b)\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			Replacement: "[PHONE REDACTED]",
 		},
 		"credit_card": {

@@ -42,7 +42,7 @@ func NewPIIDetector(cfg *PIIConfig) *PIIDetector {
 		d.labels["ssn"] = "[SSN REDACTED]"
 	}
 	if cfg.Types.Phone {
-		d.patterns["phone"] = regexp.MustCompile(`\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`)
+		d.patterns["phone"] = regexp.MustCompile(`(?:\+?\b1[-.\s]?\(?|\(|\b)\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`)
 		d.labels["phone"] = "[PHONE REDACTED]"
 	}
 	if cfg.Types.CreditCard {
