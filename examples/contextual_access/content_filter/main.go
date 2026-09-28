@@ -2,7 +2,7 @@
 //
 // This minimal hook server shows:
 //   - Blocking tool execution based on input content (pre-hook)
-//   - Blocking or replacing tool output based on content (post-hook)
+//   - Blocking or replacing tool output and content text blocks based on content (post-hook)
 //   - Using keyword lists and pattern matching for content filtering
 //
 // Usage:
@@ -196,7 +196,14 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 		return
 	}
 
+	// Content text blocks a remote server sent alongside the output reach the
+	// client too, so they are checked and rewritten the same way.
 	outputStr := flattenValue(req.Output)
+	var content []server.ContentBlock
+	if req.Content != nil {
+		content = *req.Content
+		outputStr += " " + flattenContent(content)
+	}
 
 	// Check blocked keywords in output
 	for _, keyword := range s.config.BlockedKeywords {
@@ -229,8 +236,9 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 				return
 			}
 			if cp.rule.Action == "replace" {
-				// Replace matching content in all string values
+				// Replace matching content in all output string values and content text blocks
 				result = replaceInValue(result, cp.pattern, cp.rule.Replacement)
+				content = replaceInText(content, cp.pattern, cp.rule.Replacement)
 				modified = true
 				log.Printf("[POST] Replaced content matching pattern %q", cp.rule.Name)
 			}
@@ -238,9 +246,13 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 	}
 
 	if modified {
+		override := &server.PostHookOverride{Output: result}
+		if req.Content != nil {
+			override.Content = &content
+		}
 		c.JSON(http.StatusOK, server.PostHookResult{
 			Code:     server.OK,
-			Override: &server.PostHookOverride{Output: result},
+			Override: override,
 		})
 		return
 	}
@@ -331,6 +343,31 @@ func replaceInValue(v interface{}, pattern *regexp.Regexp, replacement string) i
 	}
 }
 
+// flattenContent converts content text blocks to a single string. Other block
+// types pass through unchanged; extend this if your servers put text there.
+func flattenContent(blocks []server.ContentBlock) string {
+	var parts []string
+	for _, b := range blocks {
+		if b.Type == "text" {
+			parts = append(parts, flattenValue(b.AdditionalProperties))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// replaceInText replaces regex matches in content text blocks and passes other
+// blocks through unchanged.
+func replaceInText(blocks []server.ContentBlock, pattern *regexp.Regexp, replacement string) []server.ContentBlock {
+	result := make([]server.ContentBlock, len(blocks))
+	for i, b := range blocks {
+		result[i] = b
+		if b.Type == "text" {
+			result[i].AdditionalProperties = replaceInValue(b.AdditionalProperties, pattern, replacement).(map[string]interface{})
+		}
+	}
+	return result
+}
+
 // matchGlob matches a glob pattern against a value.
 func matchGlob(pattern, value string) bool {
 	if pattern == "" || pattern == "*" {
@@ -404,7 +441,7 @@ func main() {
 	fmt.Printf("\nContent Filter Hook Server listening on %s\n", addr)
 	fmt.Printf("  POST /access  - Filter out blocked toolkits\n")
 	fmt.Printf("  POST /pre     - Block inputs with prohibited content\n")
-	fmt.Printf("  POST /post    - Block or replace prohibited output content\n\n")
+	fmt.Printf("  POST /post    - Block or replace prohibited output and content text blocks\n\n")
 
 	if err := router.Run(addr); err != nil {
 		log.Fatal("Failed to start server:", err)

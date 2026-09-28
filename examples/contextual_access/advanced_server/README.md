@@ -104,7 +104,7 @@ See [example-config.yaml](example-config.yaml) for a full example with all optio
 
 ## PII Redaction Details
 
-The PII redactor scans all string values in tool response outputs. When PII is detected:
+The PII redactor scans all string values in tool response outputs, and the string fields of any `content` blocks (sent by remote MCP servers), returning the redacted blocks as `override.content`. Base64 payloads (`data`, `blob`) are left as-is. When PII is detected:
 
 - **Redact mode**: Replaces PII with labeled placeholders (e.g., `[EMAIL REDACTED]`)
 - **Block mode**: Returns an error response instead of the tool output
