@@ -7,7 +7,7 @@
 //
 // Usage:
 //
-//	go run ./examples/contextual_access/user_blocking -port 8888 -config blocked-users.yaml
+//	go run ./examples/contextual_access/user_blocking -port 8888 -config ./examples/contextual_access/user_blocking/example-config.yaml
 //	go run ./examples/contextual_access/user_blocking -port 8888 -block "user1,user2,user3"
 package main
 

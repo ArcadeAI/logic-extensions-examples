@@ -4,7 +4,7 @@
 // Usage:
 //
 //	# Basic HTTP server with bearer token auth
-//	go run ./examples/contextual_access/basic_rules -port 8888 -token secret123 -config config.yaml
+//	go run ./examples/contextual_access/basic_rules -port 8888 -token secret123 -config ./examples/contextual_access/basic_rules/example-config.yaml
 //
 //	# HTTPS server (TLS)
 //	go run ./examples/contextual_access/basic_rules -port 8888 -tls -cert server.crt -key server.key

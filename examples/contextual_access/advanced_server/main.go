@@ -8,7 +8,7 @@
 //
 // Usage:
 //
-//	go run ./examples/contextual_access/advanced_server -port 8888 -config config.yaml
+//	go run ./examples/contextual_access/advanced_server -port 8888 -config ./examples/contextual_access/advanced_server/example-config.yaml
 //	go run ./examples/contextual_access/advanced_server -port 8888 -token secret123
 package main
 

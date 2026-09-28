@@ -8,7 +8,7 @@
 //
 // Usage:
 //
-//	go run ./examples/contextual_access/ab_testing -port 8888 -config experiments.yaml
+//	go run ./examples/contextual_access/ab_testing -port 8888 -config ./examples/contextual_access/ab_testing/example-config.yaml
 package main
 
 import (

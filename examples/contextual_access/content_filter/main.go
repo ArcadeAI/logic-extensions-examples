@@ -8,7 +8,7 @@
 // Usage:
 //
 //	go run ./examples/contextual_access/content_filter -port 8888
-//	go run ./examples/contextual_access/content_filter -port 8888 -config filter-rules.yaml
+//	go run ./examples/contextual_access/content_filter -port 8888 -config ./examples/contextual_access/content_filter/example-config.yaml
 package main
 
 import (
