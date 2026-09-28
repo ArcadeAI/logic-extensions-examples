@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -11,10 +11,10 @@ RUN go mod download
 
 # Copy shared package and example source
 COPY pkg/ pkg/
-COPY examples/advanced_server/ examples/advanced_server/
+COPY examples/contextual_access/advanced_server/ examples/contextual_access/advanced_server/
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w" -trimpath -o /bin/server ./examples/advanced_server
+    go build -ldflags="-s -w" -trimpath -o /bin/server ./examples/contextual_access/advanced_server
 
 FROM gcr.io/distroless/static-debian12
 
