@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -11,15 +11,15 @@ RUN go mod download
 
 # Copy shared package and example source
 COPY pkg/ pkg/
-COPY examples/content_filter/ examples/content_filter/
+COPY examples/contextual_access/content_filter/ examples/contextual_access/content_filter/
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w" -trimpath -o /bin/server ./examples/content_filter
+    go build -ldflags="-s -w" -trimpath -o /bin/server ./examples/contextual_access/content_filter
 
 FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /bin/server /bin/server
 
-EXPOSE 8080
+EXPOSE 8888
 
 ENTRYPOINT ["/bin/server"]

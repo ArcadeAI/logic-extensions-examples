@@ -4,7 +4,7 @@ A minimal hook server that demonstrates how to **detect and redact personally id
 
 ## What It Shows
 
-- **Post-execution hook**: Scans all string values in tool outputs for PII patterns
+- **Post-execution hook**: Scans all string values in tool outputs and content text blocks for PII patterns
 - **Redact mode**: Replaces detected PII with labeled placeholders
 - **Block mode**: Rejects the entire response if PII is detected
 - Recursive scanning of nested objects and arrays
@@ -13,13 +13,13 @@ A minimal hook server that demonstrates how to **detect and redact personally id
 
 ```bash
 # Redact all PII types (default)
-go run ./examples/pii_redactor
+go run ./examples/contextual_access/pii_redactor
 
 # Only detect specific PII types
-go run ./examples/pii_redactor -types "email,ssn,credit_card"
+go run ./examples/contextual_access/pii_redactor -types "email,ssn,credit_card"
 
 # Block responses instead of redacting
-go run ./examples/pii_redactor -action block
+go run ./examples/contextual_access/pii_redactor -action block
 ```
 
 ## Supported PII Types
@@ -37,7 +37,7 @@ go run ./examples/pii_redactor -action block
 
 1. The **access** and **pre-execution** hooks are pass-throughs (PII redaction only applies to outputs)
 2. The **post-execution hook** receives the tool's output
-3. All string values in the output are recursively scanned for PII patterns
+3. All string values in the output are recursively scanned for PII patterns, and so are `content` text blocks (sent by remote MCP servers). The redacted blocks are returned as `override.content`; other block types pass through unchanged.
 4. Based on the configured action:
    - **Redact**: Each PII match is replaced with a type-specific placeholder
    - **Block**: The entire response is rejected with an error listing the PII types found
@@ -46,7 +46,7 @@ go run ./examples/pii_redactor -action block
 
 ```bash
 # Start the server
-go run ./examples/pii_redactor &
+go run ./examples/contextual_access/pii_redactor &
 
 # Test with PII in output - will be redacted
 curl -X POST http://localhost:8888/post \

@@ -8,8 +8,8 @@
 //
 // Usage:
 //
-//	go run ./examples/advanced_server -port 8888 -config config.yaml
-//	go run ./examples/advanced_server -port 8888 -token secret123
+//	go run ./examples/contextual_access/advanced_server -port 8888 -config ./examples/contextual_access/advanced_server/example-config.yaml
+//	go run ./examples/contextual_access/advanced_server -port 8888 -token secret123
 package main
 
 import (
@@ -440,7 +440,7 @@ func (s *HookServer) evaluatePostRules(req server.PostHookRequest) (*server.Post
 	ruleMatch := ""
 	for i, rule := range postCfg.Rules {
 		if s.matchPostRule(rule, userID, req) {
-			result = s.applyPostRule(rule)
+			result = s.applyPostRule(rule, req)
 			ruleMatch = fmt.Sprintf("post.rules[%d]", i)
 			break
 		}
@@ -455,30 +455,36 @@ func (s *HookServer) evaluatePostRules(req server.PostHookRequest) (*server.Post
 
 	// Always apply PII redaction on top of whatever result we have.
 	// PII is a security/compliance feature and should never be bypassed by rules.
-	// Scan both inputs and output for PII — inputs may contain sensitive data
-	// that the tool could echo back, and output may not always be populated.
+	// Scan inputs, output, and content for PII — inputs may contain sensitive
+	// data that the tool could echo back, output may not always be populated,
+	// and content (the blocks a remote server sent alongside the output)
+	// reaches the client too.
 	piiFound := false
 	if cfg.PII != nil && cfg.PII.Enabled {
-		hasContent := req.Output != nil || (req.Inputs != nil && len(*req.Inputs) > 0)
-		if hasContent {
+		hasData := req.Output != nil || req.Content != nil || (req.Inputs != nil && len(*req.Inputs) > 0)
+		if hasData {
 			detector := NewPIIDetector(cfg.PII)
 
-			// Scan both output and inputs for PII
-			var outputScan, inputScan PIIScanResult
+			// Scan output, content, and inputs for PII
+			var outputScan, contentScan, inputScan PIIScanResult
 			if req.Output != nil {
 				outputScan = detector.ScanAndSummarizeAny(req.Output)
+			}
+			if req.Content != nil {
+				contentScan = detector.ScanAndSummarizeContent(*req.Content)
 			}
 			if req.Inputs != nil {
 				inputScan = detector.ScanAndSummarizeAny(*req.Inputs)
 			}
+			outputPII := outputScan.ContainsPII || contentScan.ContainsPII
 
-			if outputScan.ContainsPII || inputScan.ContainsPII {
+			if outputPII || inputScan.ContainsPII {
 				piiFound = true
 
 				if cfg.PII.Action == "block" {
 					// Block the response entirely, regardless of rule result
 					errMsg := "Response blocked: PII detected"
-					if outputScan.ContainsPII && inputScan.ContainsPII {
+					if outputPII && inputScan.ContainsPII {
 						errMsg = "Response blocked: PII detected in inputs and output"
 					} else if inputScan.ContainsPII {
 						errMsg = "Response blocked: PII detected in inputs"
@@ -509,6 +515,20 @@ func (s *HookServer) evaluatePostRules(req server.PostHookRequest) (*server.Post
 						result.Override = &server.PostHookOverride{}
 					}
 					result.Override.Output = redacted
+				}
+
+				// Redact content too, or the server's original text reaches the
+				// client. As with output, a rule's override takes precedence.
+				contentToRedact := req.Content
+				if result.Override != nil && result.Override.Content != nil {
+					contentToRedact = result.Override.Content
+				}
+				if contentToRedact != nil {
+					redacted := detector.RedactContent(*contentToRedact)
+					if result.Override == nil {
+						result.Override = &server.PostHookOverride{}
+					}
+					result.Override.Content = &redacted
 				}
 				return result, joinRuleMatch(ruleMatch, "pii:redact"), true
 			}
@@ -544,7 +564,7 @@ func (s *HookServer) matchPostRule(rule PostRule, userID string, req server.Post
 	return true
 }
 
-func (s *HookServer) applyPostRule(rule PostRule) *server.PostHookResult {
+func (s *HookServer) applyPostRule(rule PostRule, req server.PostHookRequest) *server.PostHookResult {
 	result := &server.PostHookResult{
 		Code: actionToCode(rule.Action),
 	}
@@ -558,6 +578,11 @@ func (s *HookServer) applyPostRule(rule PostRule) *server.PostHookResult {
 			output := map[string]interface{}(rule.Override.Output)
 			result.Override = &server.PostHookOverride{
 				Output: output,
+			}
+			// Clear the server's content blocks so clients get the
+			// replacement output (as text) instead of the original result.
+			if req.Content != nil {
+				result.Override.Content = &[]server.ContentBlock{}
 			}
 		}
 	}

@@ -5,17 +5,14 @@ A configurable test server for validating the CATE webhook hook system. It imple
 ## Quick Start
 
 ```bash
-# From the engine directory
-cd apps/engine
-
 # Run with defaults (port 8888, no auth, allow all)
-go run ./tools/webhook-test-server
+go run ./examples/contextual_access/basic_rules
 
 # Run with authentication
-go run ./tools/webhook-test-server -token "my-secret-token"
+go run ./examples/contextual_access/basic_rules -token "my-secret-token"
 
 # Run with configuration file (enables blocking/modification rules)
-go run ./tools/webhook-test-server -config ./tools/webhook-test-server/example-config.yaml
+go run ./examples/contextual_access/basic_rules -config ./examples/contextual_access/basic_rules/example-config.yaml
 ```
 
 ## Command Line Flags
@@ -33,7 +30,7 @@ The server can be configured via a YAML file that supports:
 
 - **Access control**: Allow/deny tools based on user, toolkit, or tool name
 - **Pre-execution hooks**: Block execution or modify inputs, secrets, headers, server routing
-- **Post-execution hooks**: Block responses or modify outputs
+- **Post-execution hooks**: Block responses or modify outputs. An output override also clears the server's `content` blocks (sent by remote MCP servers), so clients get the new output instead of the original text.
 - **Pattern matching**: Exact match, glob patterns (`*`), or regex (`~pattern`)
 
 ### Example Configuration

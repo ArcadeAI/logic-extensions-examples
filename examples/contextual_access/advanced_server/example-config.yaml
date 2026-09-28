@@ -3,7 +3,7 @@
 # This file demonstrates all available configuration options.
 # The server hot-reloads this file when it changes.
 #
-# Usage: go run ./examples/advanced_server -config example-config.yaml
+# Usage: go run ./examples/contextual_access/advanced_server -config ./examples/contextual_access/advanced_server/example-config.yaml
 
 # Health endpoint configuration
 health:

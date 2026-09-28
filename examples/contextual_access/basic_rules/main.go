@@ -4,13 +4,13 @@
 // Usage:
 //
 //	# Basic HTTP server with bearer token auth
-//	go run ./tools/webhook-test-server -port 8888 -token secret123 -config config.yaml
+//	go run ./examples/contextual_access/basic_rules -port 8888 -token secret123 -config ./examples/contextual_access/basic_rules/example-config.yaml
 //
 //	# HTTPS server (TLS)
-//	go run ./tools/webhook-test-server -port 8888 -tls -cert server.crt -key server.key
+//	go run ./examples/contextual_access/basic_rules -port 8888 -tls -cert server.crt -key server.key
 //
 //	# mTLS server (requires client certificate)
-//	go run ./tools/webhook-test-server -port 8888 -tls -cert server.crt -key server.key -ca ca.crt
+//	go run ./examples/contextual_access/basic_rules -port 8888 -tls -cert server.crt -key server.key -ca ca.crt
 //
 // The server logs all incoming requests and provides configurable responses.
 package main
@@ -488,7 +488,7 @@ func (ts *TestServer) evaluatePostRules(req server.PostHookRequest) (*server.Pos
 
 	for i, rule := range postCfg.Rules {
 		if ts.matchPostRule(rule, userID, req) {
-			result := ts.applyPostRule(rule)
+			result := ts.applyPostRule(rule, req)
 			return result, fmt.Sprintf("post.rules[%d]", i)
 		}
 	}
@@ -524,7 +524,7 @@ func (ts *TestServer) matchPostRule(rule PostRule, userID string, req server.Pos
 	return true
 }
 
-func (ts *TestServer) applyPostRule(rule PostRule) *server.PostHookResult {
+func (ts *TestServer) applyPostRule(rule PostRule, req server.PostHookRequest) *server.PostHookResult {
 	result := &server.PostHookResult{
 		Code: ts.actionToCode(rule.Action),
 	}
@@ -538,6 +538,11 @@ func (ts *TestServer) applyPostRule(rule PostRule) *server.PostHookResult {
 			output := map[string]interface{}(rule.Override.Output)
 			result.Override = &server.PostHookOverride{
 				Output: output,
+			}
+			// Clear the server's content blocks so clients get the
+			// replacement output (as text) instead of the original result.
+			if req.Content != nil {
+				result.Override.Content = &[]server.ContentBlock{}
 			}
 		}
 	}

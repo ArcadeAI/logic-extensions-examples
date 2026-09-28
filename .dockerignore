@@ -11,7 +11,7 @@ LICENSE
 
 # Compiled binaries
 advanced_server
-examples/advanced_server/advanced_server
+examples/contextual_access/advanced_server/advanced_server
 
 # IDE / editor
 .vscode

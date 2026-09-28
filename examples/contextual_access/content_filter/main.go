@@ -2,13 +2,13 @@
 //
 // This minimal hook server shows:
 //   - Blocking tool execution based on input content (pre-hook)
-//   - Blocking or replacing tool output based on content (post-hook)
+//   - Blocking or replacing tool output and content text blocks based on content (post-hook)
 //   - Using keyword lists and pattern matching for content filtering
 //
 // Usage:
 //
-//	go run ./examples/content_filter -port 8888
-//	go run ./examples/content_filter -port 8888 -config filter-rules.yaml
+//	go run ./examples/contextual_access/content_filter -port 8888
+//	go run ./examples/contextual_access/content_filter -port 8888 -config ./examples/contextual_access/content_filter/example-config.yaml
 package main
 
 import (
@@ -144,12 +144,15 @@ func (s *FilterServer) PreHook(c *gin.Context) {
 		return
 	}
 
-	// Serialize all inputs to a single string for keyword/pattern checking
-	inputStr := flattenValue(req.Inputs)
+	// Rules are checked against each input value on its own, so anchored
+	// patterns work.
+	fields := leafValues(req.Inputs)
 
 	// Check blocked keywords in inputs
 	for _, keyword := range s.config.BlockedKeywords {
-		if strings.Contains(strings.ToLower(inputStr), strings.ToLower(keyword)) {
+		if anyField(fields, func(f string) bool {
+			return strings.Contains(strings.ToLower(f), strings.ToLower(keyword))
+		}) {
 			errMsg := fmt.Sprintf("Input contains blocked content: %q", keyword)
 			log.Printf("[PRE] Blocked: %s", errMsg)
 			c.JSON(http.StatusOK, server.PreHookResult{
@@ -162,7 +165,7 @@ func (s *FilterServer) PreHook(c *gin.Context) {
 
 	// Check regex patterns against inputs
 	for _, cp := range s.compiledInputs {
-		if cp.pattern.MatchString(inputStr) {
+		if anyField(fields, cp.pattern.MatchString) {
 			msg := cp.rule.Message
 			if msg == "" {
 				msg = fmt.Sprintf("Input matched blocked pattern: %s", cp.rule.Name)
@@ -196,11 +199,21 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 		return
 	}
 
-	outputStr := flattenValue(req.Output)
+	// Rules are checked against each output value on its own, so anchored
+	// patterns work. Content text blocks a remote server sent alongside the
+	// output reach the client too, so they are checked and rewritten the same way.
+	fields := leafValues(req.Output)
+	var content []server.ContentBlock
+	if req.Content != nil {
+		content = *req.Content
+		fields = append(fields, contentValues(content)...)
+	}
 
 	// Check blocked keywords in output
 	for _, keyword := range s.config.BlockedKeywords {
-		if strings.Contains(strings.ToLower(outputStr), strings.ToLower(keyword)) {
+		if anyField(fields, func(f string) bool {
+			return strings.Contains(strings.ToLower(f), strings.ToLower(keyword))
+		}) {
 			errMsg := fmt.Sprintf("Output contains blocked content: %q", keyword)
 			log.Printf("[POST] Blocked: %s", errMsg)
 			c.JSON(http.StatusOK, server.PostHookResult{
@@ -215,7 +228,7 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 	modified := false
 	result := copyValue(req.Output)
 	for _, cp := range s.compiledOutputs {
-		if cp.pattern.MatchString(outputStr) {
+		if anyField(fields, cp.pattern.MatchString) {
 			if cp.rule.Action == "block" {
 				msg := cp.rule.Message
 				if msg == "" {
@@ -229,8 +242,9 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 				return
 			}
 			if cp.rule.Action == "replace" {
-				// Replace matching content in all string values
+				// Replace matching content in all output string values and content text blocks
 				result = replaceInValue(result, cp.pattern, cp.rule.Replacement)
+				content = replaceInText(content, cp.pattern, cp.rule.Replacement)
 				modified = true
 				log.Printf("[POST] Replaced content matching pattern %q", cp.rule.Name)
 			}
@@ -238,9 +252,13 @@ func (s *FilterServer) PostHook(c *gin.Context) {
 	}
 
 	if modified {
+		override := &server.PostHookOverride{Output: result}
+		if req.Content != nil {
+			override.Content = &content
+		}
 		c.JSON(http.StatusOK, server.PostHookResult{
 			Code:     server.OK,
-			Override: &server.PostHookOverride{Output: result},
+			Override: override,
 		})
 		return
 	}
@@ -331,6 +349,63 @@ func replaceInValue(v interface{}, pattern *regexp.Regexp, replacement string) i
 	}
 }
 
+// leafValues collects every non-null value in v, recursively, as a string.
+func leafValues(v interface{}) []string {
+	switch val := v.(type) {
+	case nil:
+		return nil
+	case map[string]interface{}:
+		var leaves []string
+		for _, item := range val {
+			leaves = append(leaves, leafValues(item)...)
+		}
+		return leaves
+	case []interface{}:
+		var leaves []string
+		for _, item := range val {
+			leaves = append(leaves, leafValues(item)...)
+		}
+		return leaves
+	default:
+		return []string{flattenValue(val)}
+	}
+}
+
+// contentValues collects the values in content text blocks. Other block types
+// pass through unchanged; extend this if your servers put text there.
+func contentValues(blocks []server.ContentBlock) []string {
+	var leaves []string
+	for _, b := range blocks {
+		if b.Type == "text" {
+			leaves = append(leaves, leafValues(b.AdditionalProperties)...)
+		}
+	}
+	return leaves
+}
+
+// anyField reports whether match is true for any of fields.
+func anyField(fields []string, match func(string) bool) bool {
+	for _, f := range fields {
+		if match(f) {
+			return true
+		}
+	}
+	return false
+}
+
+// replaceInText replaces regex matches in content text blocks and passes other
+// blocks through unchanged.
+func replaceInText(blocks []server.ContentBlock, pattern *regexp.Regexp, replacement string) []server.ContentBlock {
+	result := make([]server.ContentBlock, len(blocks))
+	for i, b := range blocks {
+		result[i] = b
+		if b.Type == "text" {
+			result[i].AdditionalProperties = replaceInValue(b.AdditionalProperties, pattern, replacement).(map[string]interface{})
+		}
+	}
+	return result
+}
+
 // matchGlob matches a glob pattern against a value.
 func matchGlob(pattern, value string) bool {
 	if pattern == "" || pattern == "*" {
@@ -404,7 +479,7 @@ func main() {
 	fmt.Printf("\nContent Filter Hook Server listening on %s\n", addr)
 	fmt.Printf("  POST /access  - Filter out blocked toolkits\n")
 	fmt.Printf("  POST /pre     - Block inputs with prohibited content\n")
-	fmt.Printf("  POST /post    - Block or replace prohibited output content\n\n")
+	fmt.Printf("  POST /post    - Block or replace prohibited output and content text blocks\n\n")
 
 	if err := router.Run(addr); err != nil {
 		log.Fatal("Failed to start server:", err)

@@ -7,7 +7,7 @@ A comprehensive hook server with a web dashboard for managing access rules, PII 
 ### 1. Basic Rules (Access, Pre, Post)
 - **Access control**: Block users, toolkits, or specific tools from being visible
 - **Pre-execution rules**: Block or modify tool requests before execution
-- **Post-execution rules**: Block or modify tool responses after execution
+- **Post-execution rules**: Block or modify tool responses after execution. A rule that overrides the output also clears the server's `content` blocks, so clients get the new output instead of the original text.
 - **Pattern matching**: Exact, glob (`*`), and regex (`~pattern`) patterns
 - **Input/output matching**: Filter based on request content
 
@@ -35,16 +35,16 @@ A comprehensive hook server with a web dashboard for managing access rules, PII 
 
 ```bash
 # Run with defaults (port 8888, no auth)
-go run ./examples/advanced_server
+go run ./examples/contextual_access/advanced_server
 
 # Run with a configuration file
-go run ./examples/advanced_server -config ./examples/advanced_server/example-config.yaml
+go run ./examples/contextual_access/advanced_server -config ./examples/contextual_access/advanced_server/example-config.yaml
 
 # Run with authentication
-go run ./examples/advanced_server -token "my-secret-token"
+go run ./examples/contextual_access/advanced_server -token "my-secret-token"
 
 # Run with TLS
-go run ./examples/advanced_server -tls -cert server.crt -key server.key
+go run ./examples/contextual_access/advanced_server -tls -cert server.crt -key server.key
 ```
 
 Then open `http://localhost:8888/` in your browser to access the dashboard.
@@ -104,7 +104,7 @@ See [example-config.yaml](example-config.yaml) for a full example with all optio
 
 ## PII Redaction Details
 
-The PII redactor scans all string values in tool response outputs. When PII is detected:
+The PII redactor scans all string values in tool response outputs, and the string fields of any `content` blocks (sent by remote MCP servers), returning the redacted blocks as `override.content`. Base64 payloads (`data`, `blob`) are left as-is. When PII is detected:
 
 - **Redact mode**: Replaces PII with labeled placeholders (e.g., `[EMAIL REDACTED]`)
 - **Block mode**: Returns an error response instead of the tool output

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/ArcadeAI/logical-extensions-examples/pkg/server"
 )
 
 // =============================================================================
@@ -40,7 +42,7 @@ func NewPIIDetector(cfg *PIIConfig) *PIIDetector {
 		d.labels["ssn"] = "[SSN REDACTED]"
 	}
 	if cfg.Types.Phone {
-		d.patterns["phone"] = regexp.MustCompile(`\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`)
+		d.patterns["phone"] = regexp.MustCompile(`(?:\+?\b1[-.\s]?\(?|\(|\b)\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`)
 		d.labels["phone"] = "[PHONE REDACTED]"
 	}
 	if cfg.Types.CreditCard {
@@ -193,6 +195,21 @@ func (d *PIIDetector) ScanAndSummarize(data map[string]interface{}) PIIScanResul
 func (d *PIIDetector) ScanAndSummarizeAny(data interface{}) PIIScanResult {
 	var matches []PIIMatch
 	d.scanValue(data, "", &matches)
+	return summarize(matches)
+}
+
+// ScanAndSummarizeContent scans the string fields of post-hook content blocks
+// (text, uri, annotations, _meta, and an embedded resource's text) for PII and
+// returns a summary.
+func (d *PIIDetector) ScanAndSummarizeContent(blocks []server.ContentBlock) PIIScanResult {
+	var matches []PIIMatch
+	for i, b := range blocks {
+		d.scanBlockFields(b.AdditionalProperties, fmt.Sprintf("content[%d]", i), &matches)
+	}
+	return summarize(matches)
+}
+
+func summarize(matches []PIIMatch) PIIScanResult {
 	counts := make(map[string]int)
 	for _, m := range matches {
 		counts[m.Type]++
@@ -207,4 +224,51 @@ func (d *PIIDetector) ScanAndSummarizeAny(data interface{}) PIIScanResult {
 // RedactAny recursively redacts PII from any value (string, map, slice, etc.).
 func (d *PIIDetector) RedactAny(data interface{}) interface{} {
 	return d.redactValue(data)
+}
+
+// RedactContent redacts PII from the string fields of post-hook content blocks,
+// keeping each block's type and base64 payloads unchanged.
+func (d *PIIDetector) RedactContent(blocks []server.ContentBlock) []server.ContentBlock {
+	result := make([]server.ContentBlock, len(blocks))
+	for i, b := range blocks {
+		result[i] = server.ContentBlock{Type: b.Type, AdditionalProperties: d.redactBlockFields(b.AdditionalProperties)}
+	}
+	return result
+}
+
+// isBinaryField reports whether a content block field holds a base64 payload
+// (image and audio "data", a resource's "blob"). Regexes could corrupt these,
+// so they are left as-is.
+func isBinaryField(key string) bool {
+	return key == "data" || key == "blob"
+}
+
+func (d *PIIDetector) scanBlockFields(fields map[string]interface{}, path string, matches *[]PIIMatch) {
+	for key, val := range fields {
+		if isBinaryField(key) {
+			continue
+		}
+		newPath := path + "." + key
+		if resource, ok := val.(map[string]interface{}); ok && key == "resource" {
+			d.scanBlockFields(resource, newPath, matches)
+			continue
+		}
+		d.scanValue(val, newPath, matches)
+	}
+}
+
+func (d *PIIDetector) redactBlockFields(fields map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{}, len(fields))
+	for key, val := range fields {
+		resource, isMap := val.(map[string]interface{})
+		switch {
+		case isBinaryField(key):
+			result[key] = val
+		case isMap && key == "resource":
+			result[key] = d.redactBlockFields(resource)
+		default:
+			result[key] = d.redactValue(val)
+		}
+	}
+	return result
 }

@@ -1,15 +1,15 @@
 // pii_redactor demonstrates how to detect and redact PII from tool outputs.
 //
 // This minimal hook server shows:
-//   - Scanning tool outputs for PII (emails, IPs, SSNs, phone numbers, etc.)
+//   - Scanning tool outputs and content text blocks for PII (emails, IPs, SSNs, phone numbers, etc.)
 //   - Replacing detected PII with labeled placeholders
 //   - Optionally blocking responses that contain PII instead of redacting
 //
 // Usage:
 //
-//	go run ./examples/pii_redactor -port 8888
-//	go run ./examples/pii_redactor -port 8888 -action block
-//	go run ./examples/pii_redactor -port 8888 -types "email,ssn,credit_card"
+//	go run ./examples/contextual_access/pii_redactor -port 8888
+//	go run ./examples/contextual_access/pii_redactor -port 8888 -action block
+//	go run ./examples/contextual_access/pii_redactor -port 8888 -types "email,ssn,credit_card"
 package main
 
 import (
@@ -56,7 +56,7 @@ func AllPIIPatterns() map[string]PIIPattern {
 		},
 		"phone": {
 			Name:        "phone",
-			Regex:       regexp.MustCompile(`\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			Regex:       regexp.MustCompile(`(?:\+?\b1[-.\s]?\(?|\(|\b)\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			Replacement: "[PHONE REDACTED]",
 		},
 		"credit_card": {
@@ -158,8 +158,12 @@ func (s *RedactorServer) PostHook(c *gin.Context) {
 		return
 	}
 
-	// Scan all output values for PII
+	// Scan all output values for PII, and the content text blocks a remote
+	// server sent alongside them: clients see those too, so both must be redacted.
 	piiFound := s.scanValue(req.Output)
+	if req.Content != nil {
+		piiFound = append(piiFound, s.scanContent(*req.Content)...)
+	}
 	if len(piiFound) == 0 {
 		// No PII detected - pass through
 		c.JSON(http.StatusOK, server.PostHookResult{Code: server.OK})
@@ -167,7 +171,7 @@ func (s *RedactorServer) PostHook(c *gin.Context) {
 	}
 
 	// Log what was found
-	log.Printf("[POST] PII detected in %s.%s output:", req.Tool.Toolkit, req.Tool.Name)
+	log.Printf("[POST] PII detected in %s.%s result:", req.Tool.Toolkit, req.Tool.Name)
 	for _, match := range piiFound {
 		log.Printf("  - %s: %q", match.typeName, match.value)
 	}
@@ -184,12 +188,16 @@ func (s *RedactorServer) PostHook(c *gin.Context) {
 		return
 	}
 
-	// Redact PII in the output
-	redacted := s.redactValue(req.Output)
-	log.Printf("[POST] Redacted %d PII item(s) in output", len(piiFound))
+	// Redact PII in the output and content text blocks
+	override := &server.PostHookOverride{Output: s.redactValue(req.Output)}
+	if req.Content != nil {
+		content := s.redactContent(*req.Content)
+		override.Content = &content
+	}
+	log.Printf("[POST] Redacted %d PII item(s) in result", len(piiFound))
 	c.JSON(http.StatusOK, server.PostHookResult{
 		Code:     server.OK,
-		Override: &server.PostHookOverride{Output: redacted},
+		Override: override,
 	})
 }
 
@@ -259,6 +267,31 @@ func (s *RedactorServer) redactValue(v interface{}) interface{} {
 	default:
 		return v
 	}
+}
+
+// scanContent scans text blocks for PII. Other block types pass through
+// unscanned; extend this if your servers put text there.
+func (s *RedactorServer) scanContent(blocks []server.ContentBlock) []piiMatch {
+	var matches []piiMatch
+	for _, b := range blocks {
+		if b.Type == "text" {
+			matches = append(matches, s.scanMap(b.AdditionalProperties)...)
+		}
+	}
+	return matches
+}
+
+// redactContent redacts PII in text blocks and passes other blocks through
+// unchanged.
+func (s *RedactorServer) redactContent(blocks []server.ContentBlock) []server.ContentBlock {
+	result := make([]server.ContentBlock, len(blocks))
+	for i, b := range blocks {
+		result[i] = b
+		if b.Type == "text" {
+			result[i].AdditionalProperties = s.redactMap(b.AdditionalProperties)
+		}
+	}
+	return result
 }
 
 // =============================================================================
@@ -333,7 +366,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Listening on %s\n", addr)
-	fmt.Printf("  POST /post - Scan and redact PII from tool outputs\n\n")
+	fmt.Printf("  POST /post - Scan and redact PII from tool outputs and content text blocks\n\n")
 
 	if err := router.Run(addr); err != nil {
 		log.Fatal("Failed to start server:", err)

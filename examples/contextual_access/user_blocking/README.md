@@ -12,10 +12,10 @@ A minimal hook server that demonstrates how to **block specific users** from acc
 
 ```bash
 # Block users via command line
-go run ./examples/user_blocking -block "user1,user2,user3"
+go run ./examples/contextual_access/user_blocking -block "user1,user2,user3"
 
 # Block users via config file
-go run ./examples/user_blocking -config blocked-users.yaml
+go run ./examples/contextual_access/user_blocking -config ./examples/contextual_access/user_blocking/example-config.yaml
 ```
 
 ## Config File Format
@@ -39,7 +39,7 @@ blocked_users:
 
 ```bash
 # Start the server
-go run ./examples/user_blocking -block "blocked-user" &
+go run ./examples/contextual_access/user_blocking -block "blocked-user" &
 
 # Test access hook - user is blocked
 curl -X POST http://localhost:8888/access \

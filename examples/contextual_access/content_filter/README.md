@@ -6,13 +6,13 @@ A minimal hook server that demonstrates how to **filter tool calls and responses
 
 - **Access hook**: Block entire toolkits from being visible
 - **Pre-execution hook**: Block tool execution when inputs contain prohibited content (keywords or regex patterns)
-- **Post-execution hook**: Block or replace prohibited content in tool outputs
+- **Post-execution hook**: Block or replace prohibited content in tool outputs and content text blocks
 
 ## Quick Start
 
 ```bash
 # Run with a config file
-go run ./examples/content_filter -config filter-rules.yaml
+go run ./examples/contextual_access/content_filter -config ./examples/contextual_access/content_filter/example-config.yaml
 ```
 
 ## Config File Format
@@ -56,24 +56,26 @@ blocked_output_patterns:
 
 ## How It Works
 
+Rules match each value on its own, so a keyword or pattern doesn't match across two separate fields.
+
 ### Input Filtering (Pre-Hook)
-1. All tool input values are flattened into a single string
+1. Each tool input value is checked on its own
 2. Blocked keywords are checked (case-insensitive substring match)
 3. Blocked input patterns are checked (regex match)
 4. If any match is found, the tool execution is blocked with an error message
 
 ### Output Filtering (Post-Hook)
-1. All tool output values are flattened into a single string
+1. Each tool output value, and each value in `content` text blocks (sent by remote MCP servers), is checked on its own
 2. Blocked keywords are checked
 3. Blocked output patterns are checked:
    - `action: "block"` - Reject the entire response
-   - `action: "replace"` - Replace matching content with the replacement string
+   - `action: "replace"` - Replace matching content with the replacement string, in both the output and `content` text blocks (returned as `override.content`). Other block types pass through unchanged.
 
 ## Testing
 
 ```bash
 # Start the server with example rules
-go run ./examples/content_filter -config filter-rules.yaml &
+go run ./examples/contextual_access/content_filter -config ./examples/contextual_access/content_filter/example-config.yaml &
 
 # Test pre-hook - should be blocked (contains blocked keyword)
 curl -X POST http://localhost:8888/pre \

@@ -46,6 +46,8 @@ These servers implement webhook endpoints that integrate with an engine's hook s
 | `POST /pre` | Validate/modify tool inputs before execution |
 | `POST /post` | Validate/modify tool outputs after execution |
 
+Post-hook requests from remote MCP servers also carry `content`, the content blocks the server returned alongside `output`. The examples that redact or filter `output` apply the same change to `content` and return it as `override.content`. MCP gateways render only text blocks, so pii_redactor and content_filter handle just those; advanced_server handles every block.
+
 ## Architecture
 
 ```

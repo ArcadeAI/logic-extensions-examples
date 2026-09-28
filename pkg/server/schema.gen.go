@@ -4,6 +4,9 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,6 +55,13 @@ type Authorization struct {
 	ProviderId *string `json:"provider_id,omitempty"`
 }
 
+// ContentBlock A block in Arcade's protocol-neutral content-block format: `text`, `image`, `audio`, `resource_link`, or `resource`, with `annotations` and `_meta`. The format follows the MCP content-block model, so MCP tooling and documentation apply, and `type` selects the block's other fields as MCP defines them: https://modelcontextprotocol.io/specification/2026-07-28/server/tools#tool-result. Content a server returns in another protocol would be converted into this format.
+type ContentBlock struct {
+	// Type The block type, e.g. "text", "image", "audio", "resource_link", or "resource"
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
 // ErrorResponse Error response from webhook server
 type ErrorResponse struct {
 	// Code Response code from hook server
@@ -84,12 +94,18 @@ type OAuth2Details struct {
 
 // PostHookOverride Override response parameters
 type PostHookOverride struct {
+	// Content Replace the content blocks, in the same format as the request's `content`. Omit to forward the request's `content` unchanged. An empty list removes every block, and clients then receive `output` rendered as a single text block. A hook that rewrites `output` should rewrite `content` too, or the server's own text reaches the client as it was sent.
+	Content *[]ContentBlock `json:"content,omitempty"`
+
 	// Output Override the output value (any JSON type — string, number, object, array, etc.)
 	Output interface{} `json:"output,omitempty"`
 }
 
 // PostHookRequest Post-hook request from engine to hook server
 type PostHookRequest struct {
+	// Content The content blocks the tool's server returned alongside its structured result, in Arcade's protocol-neutral content-block format (see `ContentBlock`). Today the only source is remote MCP servers. Fields the block definitions include are forwarded, annotations and `_meta` included, except that a `resource_link` block may arrive without its `title`, `size`, `icons`, or `_meta`. Fields outside the block definitions may be dropped. Clients receive the text blocks as the unstructured side of the result. Absent when the server sent no content of its own, in which case clients receive `output` rendered as text. Also absent on error results, whose error text arrives in `execution_error`.
+	Content *[]ContentBlock `json:"content,omitempty"`
+
 	// Context Tool execution context
 	Context ToolContext `json:"context"`
 
@@ -186,6 +202,30 @@ type ToolAuthRequirements struct {
 	ProviderType *string `json:"provider_type,omitempty"`
 }
 
+// ToolBehavior Behavior metadata for a tool
+type ToolBehavior struct {
+	// Destructive Whether the tool can delete or irreversibly modify data
+	Destructive *bool `json:"destructive,omitempty"`
+
+	// Idempotent Whether repeated calls with the same inputs produce the same result
+	Idempotent *bool `json:"idempotent,omitempty"`
+
+	// OpenWorld Whether the tool can affect state outside its defined outputs
+	OpenWorld *bool `json:"open_world,omitempty"`
+
+	// Operations Operations this tool performs (e.g., "read", "create", "update", "delete", "opaque"). Sourced from the tool's Behavior.Operations metadata. See https://docs.arcade.dev/en/guides/create-tools/tool-basics/add-tool-metadata for valid values.
+	Operations *[]string `json:"operations,omitempty"`
+
+	// ReadOnly Whether the tool only reads data
+	ReadOnly *bool `json:"read_only,omitempty"`
+}
+
+// ToolClassification Classification metadata for a tool
+type ToolClassification struct {
+	// ServiceDomains Service domains this tool interfaces with (e.g., "crm", "email", "calendar"). Sourced from the tool's Classification.ServiceDomains metadata. See https://docs.arcade.dev/en/guides/create-tools/tool-basics/add-tool-metadata for valid values.
+	ServiceDomains *[]string `json:"service_domains,omitempty"`
+}
+
 // ToolContext Tool execution context
 type ToolContext struct {
 	Authorization *[]Authorization `json:"authorization,omitempty"`
@@ -202,6 +242,9 @@ type ToolContext struct {
 
 // ToolInfo Tool identification information
 type ToolInfo struct {
+	// Metadata Tool metadata
+	Metadata *ToolVersionInfoMetadata `json:"metadata,omitempty"`
+
 	// Name Tool name
 	Name string `json:"name"`
 
@@ -214,11 +257,26 @@ type ToolInfo struct {
 
 // ToolVersionInfo Version-specific information for a tool
 type ToolVersionInfo struct {
+	// Metadata Tool metadata
+	Metadata *ToolVersionInfoMetadata `json:"metadata,omitempty"`
+
 	// Requirements Requirements for a toolkit (group of tools)
 	Requirements *ToolkitRequirements `json:"requirements,omitempty"`
 
 	// Version Tool version
 	Version *string `json:"version,omitempty"`
+}
+
+// ToolVersionInfoMetadata Tool metadata
+type ToolVersionInfoMetadata struct {
+	// Behavior Behavior metadata for a tool
+	Behavior *ToolBehavior `json:"behavior,omitempty"`
+
+	// Classification Classification metadata for a tool
+	Classification *ToolClassification `json:"classification,omitempty"`
+
+	// Extras Arbitrary additional metadata (e.g., {"IdP": "entra_id"})
+	Extras *map[string]interface{} `json:"extras,omitempty"`
 }
 
 // ToolkitInfo Information about a group of tools
@@ -248,6 +306,72 @@ type PostHookJSONRequestBody = PostHookRequest
 // PreHookJSONRequestBody defines body for PreHook for application/json ContentType.
 type PreHookJSONRequestBody = PreHookRequest
 
+// Getter for additional properties for ContentBlock. Returns the specified
+// element and whether it was found
+func (a ContentBlock) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ContentBlock
+func (a *ContentBlock) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ContentBlock to handle AdditionalProperties
+func (a *ContentBlock) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ContentBlock to handle AdditionalProperties
+func (a ContentBlock) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Access control hook
@@ -275,6 +399,7 @@ type MiddlewareFunc func(c *gin.Context)
 
 // AccessHook operation middleware
 func (siw *ServerInterfaceWrapper) AccessHook(c *gin.Context) {
+
 	c.Set(BearerAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -289,6 +414,7 @@ func (siw *ServerInterfaceWrapper) AccessHook(c *gin.Context) {
 
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -301,6 +427,7 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 
 // PostHook operation middleware
 func (siw *ServerInterfaceWrapper) PostHook(c *gin.Context) {
+
 	c.Set(BearerAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -315,6 +442,7 @@ func (siw *ServerInterfaceWrapper) PostHook(c *gin.Context) {
 
 // PreHook operation middleware
 func (siw *ServerInterfaceWrapper) PreHook(c *gin.Context) {
+
 	c.Set(BearerAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
