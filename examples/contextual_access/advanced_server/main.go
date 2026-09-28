@@ -8,8 +8,8 @@
 //
 // Usage:
 //
-//	go run ./examples/advanced_server -port 8888 -config config.yaml
-//	go run ./examples/advanced_server -port 8888 -token secret123
+//	go run ./examples/contextual_access/advanced_server -port 8888 -config config.yaml
+//	go run ./examples/contextual_access/advanced_server -port 8888 -token secret123
 package main
 
 import (

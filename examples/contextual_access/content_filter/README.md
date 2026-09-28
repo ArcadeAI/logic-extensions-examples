@@ -12,7 +12,7 @@ A minimal hook server that demonstrates how to **filter tool calls and responses
 
 ```bash
 # Run with a config file
-go run ./examples/content_filter -config filter-rules.yaml
+go run ./examples/contextual_access/content_filter -config filter-rules.yaml
 ```
 
 ## Config File Format
@@ -73,7 +73,7 @@ blocked_output_patterns:
 
 ```bash
 # Start the server with example rules
-go run ./examples/content_filter -config filter-rules.yaml &
+go run ./examples/contextual_access/content_filter -config filter-rules.yaml &
 
 # Test pre-hook - should be blocked (contains blocked keyword)
 curl -X POST http://localhost:8888/pre \

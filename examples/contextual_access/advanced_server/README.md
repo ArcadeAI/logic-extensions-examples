@@ -35,16 +35,16 @@ A comprehensive hook server with a web dashboard for managing access rules, PII 
 
 ```bash
 # Run with defaults (port 8888, no auth)
-go run ./examples/advanced_server
+go run ./examples/contextual_access/advanced_server
 
 # Run with a configuration file
-go run ./examples/advanced_server -config ./examples/advanced_server/example-config.yaml
+go run ./examples/contextual_access/advanced_server -config ./examples/contextual_access/advanced_server/example-config.yaml
 
 # Run with authentication
-go run ./examples/advanced_server -token "my-secret-token"
+go run ./examples/contextual_access/advanced_server -token "my-secret-token"
 
 # Run with TLS
-go run ./examples/advanced_server -tls -cert server.crt -key server.key
+go run ./examples/contextual_access/advanced_server -tls -cert server.crt -key server.key
 ```
 
 Then open `http://localhost:8888/` in your browser to access the dashboard.

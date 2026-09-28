@@ -14,7 +14,7 @@ A minimal hook server that demonstrates how to **A/B test and canary-deploy tool
 
 ```bash
 # Run with experiment config
-go run ./examples/ab_testing -config experiments.yaml
+go run ./examples/contextual_access/ab_testing -config experiments.yaml
 ```
 
 ## Config File Format
@@ -79,7 +79,7 @@ experiments:
 
 ```bash
 # Start with example config
-go run ./examples/ab_testing -config experiments.yaml &
+go run ./examples/contextual_access/ab_testing -config experiments.yaml &
 
 # Send pre-hook requests for different users
 for i in $(seq 1 20); do

@@ -4,13 +4,13 @@
 // Usage:
 //
 //	# Basic HTTP server with bearer token auth
-//	go run ./tools/webhook-test-server -port 8888 -token secret123 -config config.yaml
+//	go run ./examples/contextual_access/basic_rules -port 8888 -token secret123 -config config.yaml
 //
 //	# HTTPS server (TLS)
-//	go run ./tools/webhook-test-server -port 8888 -tls -cert server.crt -key server.key
+//	go run ./examples/contextual_access/basic_rules -port 8888 -tls -cert server.crt -key server.key
 //
 //	# mTLS server (requires client certificate)
-//	go run ./tools/webhook-test-server -port 8888 -tls -cert server.crt -key server.key -ca ca.crt
+//	go run ./examples/contextual_access/basic_rules -port 8888 -tls -cert server.crt -key server.key -ca ca.crt
 //
 // The server logs all incoming requests and provides configurable responses.
 package main

@@ -13,13 +13,13 @@ A minimal hook server that demonstrates how to **detect and redact personally id
 
 ```bash
 # Redact all PII types (default)
-go run ./examples/pii_redactor
+go run ./examples/contextual_access/pii_redactor
 
 # Only detect specific PII types
-go run ./examples/pii_redactor -types "email,ssn,credit_card"
+go run ./examples/contextual_access/pii_redactor -types "email,ssn,credit_card"
 
 # Block responses instead of redacting
-go run ./examples/pii_redactor -action block
+go run ./examples/contextual_access/pii_redactor -action block
 ```
 
 ## Supported PII Types
@@ -46,7 +46,7 @@ go run ./examples/pii_redactor -action block
 
 ```bash
 # Start the server
-go run ./examples/pii_redactor &
+go run ./examples/contextual_access/pii_redactor &
 
 # Test with PII in output - will be redacted
 curl -X POST http://localhost:8888/post \

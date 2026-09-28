@@ -5,17 +5,14 @@ A configurable test server for validating the CATE webhook hook system. It imple
 ## Quick Start
 
 ```bash
-# From the engine directory
-cd apps/engine
-
 # Run with defaults (port 8888, no auth, allow all)
-go run ./tools/webhook-test-server
+go run ./examples/contextual_access/basic_rules
 
 # Run with authentication
-go run ./tools/webhook-test-server -token "my-secret-token"
+go run ./examples/contextual_access/basic_rules -token "my-secret-token"
 
 # Run with configuration file (enables blocking/modification rules)
-go run ./tools/webhook-test-server -config ./tools/webhook-test-server/example-config.yaml
+go run ./examples/contextual_access/basic_rules -config ./examples/contextual_access/basic_rules/example-config.yaml
 ```
 
 ## Command Line Flags

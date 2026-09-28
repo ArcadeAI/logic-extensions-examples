@@ -7,9 +7,9 @@
 //
 // Usage:
 //
-//	go run ./examples/pii_redactor -port 8888
-//	go run ./examples/pii_redactor -port 8888 -action block
-//	go run ./examples/pii_redactor -port 8888 -types "email,ssn,credit_card"
+//	go run ./examples/contextual_access/pii_redactor -port 8888
+//	go run ./examples/contextual_access/pii_redactor -port 8888 -action block
+//	go run ./examples/contextual_access/pii_redactor -port 8888 -types "email,ssn,credit_card"
 package main
 
 import (
