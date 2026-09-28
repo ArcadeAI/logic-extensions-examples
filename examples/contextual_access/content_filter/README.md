@@ -57,7 +57,7 @@ blocked_output_patterns:
 ## How It Works
 
 ### Input Filtering (Pre-Hook)
-1. All tool input values are flattened into a single string
+1. Each tool input value is checked on its own
 2. Blocked keywords are checked (case-insensitive substring match)
 3. Blocked input patterns are checked (regex match)
 4. If any match is found, the tool execution is blocked with an error message

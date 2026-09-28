@@ -144,12 +144,15 @@ func (s *FilterServer) PreHook(c *gin.Context) {
 		return
 	}
 
-	// Serialize all inputs to a single string for keyword/pattern checking
-	inputStr := flattenValue(req.Inputs)
+	// Rules are checked against each input value on its own, so anchored
+	// patterns work.
+	fields := leafValues(req.Inputs)
 
 	// Check blocked keywords in inputs
 	for _, keyword := range s.config.BlockedKeywords {
-		if strings.Contains(strings.ToLower(inputStr), strings.ToLower(keyword)) {
+		if anyField(fields, func(f string) bool {
+			return strings.Contains(strings.ToLower(f), strings.ToLower(keyword))
+		}) {
 			errMsg := fmt.Sprintf("Input contains blocked content: %q", keyword)
 			log.Printf("[PRE] Blocked: %s", errMsg)
 			c.JSON(http.StatusOK, server.PreHookResult{
@@ -162,7 +165,7 @@ func (s *FilterServer) PreHook(c *gin.Context) {
 
 	// Check regex patterns against inputs
 	for _, cp := range s.compiledInputs {
-		if cp.pattern.MatchString(inputStr) {
+		if anyField(fields, cp.pattern.MatchString) {
 			msg := cp.rule.Message
 			if msg == "" {
 				msg = fmt.Sprintf("Input matched blocked pattern: %s", cp.rule.Name)
