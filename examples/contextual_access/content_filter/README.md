@@ -63,7 +63,7 @@ blocked_output_patterns:
 4. If any match is found, the tool execution is blocked with an error message
 
 ### Output Filtering (Post-Hook)
-1. All tool output values, and any `content` text blocks (sent by remote MCP servers), are flattened into a single string
+1. Each tool output value, and each value in `content` text blocks (sent by remote MCP servers), is checked on its own
 2. Blocked keywords are checked
 3. Blocked output patterns are checked:
    - `action: "block"` - Reject the entire response
