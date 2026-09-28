@@ -33,7 +33,7 @@ The server can be configured via a YAML file that supports:
 
 - **Access control**: Allow/deny tools based on user, toolkit, or tool name
 - **Pre-execution hooks**: Block execution or modify inputs, secrets, headers, server routing
-- **Post-execution hooks**: Block responses or modify outputs
+- **Post-execution hooks**: Block responses or modify outputs. An output override also clears the server's `content` blocks (sent by remote MCP servers), so clients get the new output instead of the original text.
 - **Pattern matching**: Exact match, glob patterns (`*`), or regex (`~pattern`)
 
 ### Example Configuration

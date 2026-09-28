@@ -7,7 +7,7 @@ A comprehensive hook server with a web dashboard for managing access rules, PII 
 ### 1. Basic Rules (Access, Pre, Post)
 - **Access control**: Block users, toolkits, or specific tools from being visible
 - **Pre-execution rules**: Block or modify tool requests before execution
-- **Post-execution rules**: Block or modify tool responses after execution
+- **Post-execution rules**: Block or modify tool responses after execution. A rule that overrides the output also clears the server's `content` blocks, so clients get the new output instead of the original text.
 - **Pattern matching**: Exact, glob (`*`), and regex (`~pattern`) patterns
 - **Input/output matching**: Filter based on request content
 

@@ -488,7 +488,7 @@ func (ts *TestServer) evaluatePostRules(req server.PostHookRequest) (*server.Pos
 
 	for i, rule := range postCfg.Rules {
 		if ts.matchPostRule(rule, userID, req) {
-			result := ts.applyPostRule(rule)
+			result := ts.applyPostRule(rule, req)
 			return result, fmt.Sprintf("post.rules[%d]", i)
 		}
 	}
@@ -524,7 +524,7 @@ func (ts *TestServer) matchPostRule(rule PostRule, userID string, req server.Pos
 	return true
 }
 
-func (ts *TestServer) applyPostRule(rule PostRule) *server.PostHookResult {
+func (ts *TestServer) applyPostRule(rule PostRule, req server.PostHookRequest) *server.PostHookResult {
 	result := &server.PostHookResult{
 		Code: ts.actionToCode(rule.Action),
 	}
@@ -538,6 +538,11 @@ func (ts *TestServer) applyPostRule(rule PostRule) *server.PostHookResult {
 			output := map[string]interface{}(rule.Override.Output)
 			result.Override = &server.PostHookOverride{
 				Output: output,
+			}
+			// Clear the server's content blocks so clients get the
+			// replacement output (as text) instead of the original result.
+			if req.Content != nil {
+				result.Override.Content = &[]server.ContentBlock{}
 			}
 		}
 	}
