@@ -17,18 +17,18 @@ import (
 // ABTestManager manages experiment state and variant assignment.
 type ABTestManager struct {
 	mu          sync.RWMutex
-	assignments map[string]string          // "user:experiment" -> variant name
+	assignments map[string]string           // "user:experiment" -> variant name
 	stats       map[string]*ExperimentStats // experiment name -> stats
 }
 
 // ExperimentStats tracks usage statistics for an experiment.
 type ExperimentStats struct {
-	Name            string                  `json:"name"`
-	TotalRequests   int                     `json:"total_requests"`
-	VariantCounts   map[string]int          `json:"variant_counts"`
-	UniqueUsers     map[string]map[string]bool `json:"-"` // variant -> set of user IDs (not serialised)
-	VariantUsers    map[string]int          `json:"variant_users"` // variant -> unique user count
-	LastRequestTime *time.Time              `json:"last_request_time,omitempty"`
+	Name            string                     `json:"name"`
+	TotalRequests   int                        `json:"total_requests"`
+	VariantCounts   map[string]int             `json:"variant_counts"`
+	UniqueUsers     map[string]map[string]bool `json:"-"`             // variant -> set of user IDs (not serialised)
+	VariantUsers    map[string]int             `json:"variant_users"` // variant -> unique user count
+	LastRequestTime *time.Time                 `json:"last_request_time,omitempty"`
 }
 
 // NewABTestManager creates a new A/B test manager.
@@ -208,11 +208,11 @@ type RegistryResponse struct {
 
 // arcadeToolResponse represents a single tool from the Arcade engine API.
 type arcadeToolResponse struct {
-	Name               string                 `json:"name"`
-	Description        string                 `json:"description"`
-	FullyQualifiedName string                 `json:"fully_qualified_name"`
-	QualifiedName      string                 `json:"qualified_name"`
-	Toolkit            arcadeToolkitResponse  `json:"toolkit"`
+	Name               string                `json:"name"`
+	Description        string                `json:"description"`
+	FullyQualifiedName string                `json:"fully_qualified_name"`
+	QualifiedName      string                `json:"qualified_name"`
+	Toolkit            arcadeToolkitResponse `json:"toolkit"`
 }
 
 // arcadeToolkitResponse represents toolkit info nested in a tool response.
