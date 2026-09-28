@@ -56,6 +56,8 @@ blocked_output_patterns:
 
 ## How It Works
 
+Rules match each value on its own, so a keyword or pattern doesn't match across two separate fields.
+
 ### Input Filtering (Pre-Hook)
 1. Each tool input value is checked on its own
 2. Blocked keywords are checked (case-insensitive substring match)
