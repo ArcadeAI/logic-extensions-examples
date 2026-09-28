@@ -20,6 +20,6 @@ FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /bin/server /bin/server
 
-EXPOSE 8080
+EXPOSE 8888
 
 ENTRYPOINT ["/bin/server"]
